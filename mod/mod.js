@@ -12,7 +12,8 @@ const state = {
   currencyManager: null, characterManager: null, bannerManager: null,
   runData: null, saveMeState: null, pending: [], prefs: null,
   status: null, activity: null, installed: false, uiCount: 0,
-  menuAttached: false, menuBuilding: false
+  menuAttached: false, menuBuilding: false, menuBuildStartedAt: 0,
+  menuRoot: null, menuHost: null
 };
 
 // Report logs without touching ART/Java; native logging works before the VM is ready.
@@ -249,11 +250,19 @@ function buildMenu() {
       const scroll = Scroll.$new(activity); body.addView(scroll);
       const content = Linear.$new(activity); content.setOrientation(1); scroll.addView(content);
       const info = makeText('Ready', 12); body.addView(info); state.status = info;
-      const lp = Frame.LayoutParams.$new(dp(310), -2); lp.gravity.value = Gravity.TOP.value | Gravity.LEFT.value;
-      const decor = activity.getWindow().getDecorView();
-      // The decor root is not guaranteed to be a FrameLayout on every device.
-      const ViewGroup = Java.use('android.view.ViewGroup');
-      const container = Java.cast(decor, ViewGroup);
+      const lp = Frame.LayoutParams.$new(dp(310), -2);
+      lp.gravity.value = Gravity.TOP.value | Gravity.LEFT.value;
+      // The Activity's content FrameLayout is the supported overlay host.
+      // Decorating the top-level DecorView can get lost when Unity replaces
+      // its content, leaving the UI invisible despite successful addView().
+      const contentId = 16908290; // android.R.id.content
+      const contentView = activity.findViewById(contentId);
+      if (contentView === null) {
+        throw new Error('Activity content view is not ready');
+      }
+      const container = Java.cast(contentView, Frame);
+      log('Menu host=' + container.getClass().getName().toString()
+          + ' visible=' + container.getVisibility());
       container.addView(root, lp);
       root.setX(dp(12)); root.setY(dp(60));
       root.setVisibility(View.VISIBLE.value);
@@ -345,9 +354,15 @@ function buildMenu() {
         const b = makeButton(tab, function () { show(tab); }); b.setTextSize(9); tabs.addView(b);
       });
       show('Gameplay'); state.updateAds();
+      if (root.getParent() === null)
+        throw new Error('Menu root has no parent after addView');
+      state.menuRoot = Java.retain(root);
+      state.menuHost = Java.retain(container);
       state.menuAttached = true;
       state.menuBuilding = false;
-      log('Floating menu attached: ' + root.getWidth() + 'px, visibility=' + root.getVisibility());
+      log('Floating menu attached to content view; parent='
+          + root.getParent().getClass().getName().toString()
+          + ' visible=' + root.getVisibility());
     });
   });
 }
@@ -373,10 +388,37 @@ function initializeMod() {
     // Java/UI errors instead of losing the menu forever after the first try.
     let menuScheduled = false;
     let menuAttempts = 0;
+    let nextHealthCheck = 0;
     const menuTimer = setInterval(function () {
+      // Unity can replace its content view when switching scenes. Keep the
+      // launcher alive by detecting a detached overlay and rebuilding it.
       if (state.menuAttached) {
-        clearInterval(menuTimer);
+        if (Date.now() >= nextHealthCheck) {
+          nextHealthCheck = Date.now() + 3000;
+          try {
+            Java.scheduleOnMainThread(function () {
+              try {
+                if (state.menuRoot !== null &&
+                    !state.menuRoot.isAttachedToWindow()) {
+                  log('Menu detached from window; requesting reattachment');
+                  state.menuAttached = false;
+                  state.menuRoot = null;
+                  state.menuHost = null;
+                  state.status = null;
+                }
+              } catch (e) {
+                log('Menu health check failed: ' + (e.stack || e));
+              }
+            });
+          } catch (e) {
+            log('Menu health check dispatch failed: ' + (e.stack || e));
+          }
+        }
         return;
+      }
+      if (state.menuBuilding && Date.now() - state.menuBuildStartedAt > 15000) {
+        log('Menu build stalled; retrying');
+        state.menuBuilding = false;
       }
       if (menuScheduled || state.menuBuilding) return;
       try {
@@ -398,6 +440,7 @@ function initializeMod() {
               menuScheduled = false;
               if (state.menuAttached || state.menuBuilding) return;
               state.menuBuilding = true;
+              state.menuBuildStartedAt = Date.now();
               try {
                 buildMenu();
               } catch (e) {
