@@ -31,7 +31,7 @@ def main():
     menu_source = (ROOT / "mod/mod.js").read_text(encoding="utf-8")
     assert "function setViewText(view, value)" in menu_source
     assert "setText.overload('java.lang.CharSequence')" in menu_source
-    assert not re.search(r"\\.(?:setText|setHint)\\s*\\(", menu_source), (
+    assert not re.search(r"\.(?:setText|setHint)\s*\(", menu_source), (
         "Ambiguous Android text overload: route through setViewText/setViewHint"
     )
     certs = []
