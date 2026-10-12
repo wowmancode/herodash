@@ -64,6 +64,27 @@ jobs:
             --gadget-arm tools-cache/arm.so \
             --build-tools "$ANDROID_HOME/build-tools/34.0.0" \
             --output build
+      - name: Build diagnostic APK splits
+        run: |
+          for mode in none gadget; do
+            python tools/build.py \
+              --apkm input/herodash.apkm \
+              --gadget-arm64 tools-cache/arm64.so \
+              --gadget-arm tools-cache/arm.so \
+              --build-tools "$ANDROID_HOME/build-tools/34.0.0" \
+              --diagnostic "$mode" \
+              --output "diagnostic-$mode"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: herodash-diagnostic-no-injection
+          path: diagnostic-none/*-patched.apk
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: herodash-diagnostic-gadget-only
+          path: diagnostic-gadget/*-patched.apk
+          if-no-files-found: error
       - name: Verify patch and signatures
         run: |
           python tools/verify.py --original input/herodash.apkm --output build \
