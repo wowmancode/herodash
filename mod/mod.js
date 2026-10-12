@@ -258,53 +258,112 @@ function buildMenu() {
       const Scroll = Java.use('android.widget.ScrollView');
       const Gravity = Java.use('android.view.Gravity');
       const View = Java.use('android.view.View');
-      const root = Linear.$new(activity); root.setOrientation(1);
-      root.setBackgroundColor(-0x11eae4d7); root.setElevation(dp(9));
-      const header = makeButton('HD  ▾', function () {
-        body.setVisibility(body.getVisibility() === 0 ? 8 : 0);
+      const TextView = Java.use('android.widget.TextView');
+      const Color = Java.use('android.graphics.Color');
+      const GradientDrawable = Java.use('android.graphics.drawable.GradientDrawable');
+      const root = Linear.$new(activity);
+      root.setOrientation(1);
+      root.setPadding(dp(8), dp(8), dp(8), dp(8));
+      root.setBackgroundColor(Color.rgb(32, 35, 43));
+      root.setElevation(dp(12));
+      const header = makeButton('Hero Dash menu  ✕', function () {
+        root.setVisibility(View.GONE.value);
       });
       root.addView(header);
-      const body = Linear.$new(activity); body.setOrientation(1); root.addView(body);
+      const body = Linear.$new(activity);
+      body.setOrientation(1);
+      root.addView(body);
       const tabScroll = Java.use('android.widget.HorizontalScrollView').$new(activity);
       body.addView(tabScroll);
-      const tabs = Linear.$new(activity); tabs.setOrientation(0); tabScroll.addView(tabs);
-      const scroll = Scroll.$new(activity); body.addView(scroll);
-      const content = Linear.$new(activity); content.setOrientation(1); scroll.addView(content);
-      const info = makeText('Ready', 12); body.addView(info); state.status = info;
-      const lp = Frame.LayoutParams.$new(dp(310), -2);
-      lp.gravity.value = Gravity.TOP.value | Gravity.LEFT.value;
-      // The Activity's content FrameLayout is the supported overlay host.
-      // Decorating the top-level DecorView can get lost when Unity replaces
-      // its content, leaving the UI invisible despite successful addView().
-      const contentId = 16908290; // android.R.id.content
-      const contentView = activity.findViewById(contentId);
-      if (contentView === null) {
-        throw new Error('Activity content view is not ready');
-      }
-      const container = Java.cast(contentView, Frame);
-      log('Menu host=' + container.getClass().getName().toString()
-          + ' visible=' + container.getVisibility());
-      container.addView(root, lp);
-      root.setX(dp(12)); root.setY(dp(60));
-      root.setVisibility(View.VISIBLE.value);
-      root.bringToFront();
+      const tabs = Linear.$new(activity);
+      tabs.setOrientation(0);
+      tabScroll.addView(tabs);
+      const scroll = Scroll.$new(activity);
+      body.addView(scroll, Linear.LayoutParams.$new(-1, dp(340)));
+      const content = Linear.$new(activity);
+      content.setOrientation(1);
+      scroll.addView(content);
+      const info = makeText('Ready', 12);
+      body.addView(info);
+      state.status = info;
 
-      const Touch = Java.registerClass({
-        name: 'com.outfit7.herodash.mod.Drag' + (++state.uiCount),
+      // Like runintogold's TomMenu.install(): place a standalone draggable
+      // floating button with Activity.addContentView(), not in the Unity
+      // content hierarchy. The actual controls stay hidden until tapped.
+      const screen = activity.getResources().getDisplayMetrics();
+      const panelLp = Frame.LayoutParams.$new(
+        Math.min(dp(320), screen.widthPixels.value - dp(16)), -2);
+      panelLp.gravity.value = Gravity.TOP.value | Gravity.LEFT.value;
+      activity.addContentView(root, panelLp);
+      root.setX(dp(8));
+      root.setY(dp(185));
+      root.setVisibility(View.GONE.value);
+
+      const bubble = TextView.$new(activity);
+      setViewText(bubble, 'HD');
+      bubble.setTextSize(17);
+      bubble.setTextColor(Color.rgb(0, 0, 0));
+      bubble.setGravity(Gravity.CENTER.value);
+      const background = GradientDrawable.$new();
+      background.setColor(Color.rgb(245, 166, 35));
+      background.setCornerRadius(dp(24));
+      bubble.setBackground(background);
+      bubble.setElevation(dp(16));
+      bubble.setAlpha(0.93);
+      const bubbleLp = Frame.LayoutParams.$new(dp(48), dp(48));
+      bubbleLp.gravity.value = Gravity.TOP.value | Gravity.LEFT.value;
+      activity.addContentView(bubble, bubbleLp);
+      const prefsX = state.prefs.getInt('bubbleX', dp(8));
+      const prefsY = state.prefs.getInt('bubbleY', dp(120));
+      bubble.setX(Math.max(0, Math.min(prefsX, screen.widthPixels.value - dp(48))));
+      bubble.setY(Math.max(0, Math.min(prefsY, screen.heightPixels.value - dp(48))));
+
+      const Drag = Java.registerClass({
+        name: 'com.outfit7.herodash.mod.BubbleDrag' + (++state.uiCount),
         implements: [Java.use('android.view.View$OnTouchListener')],
-        fields: { lastX: 'float', lastY: 'float' },
-        methods: { onTouch: function (_v, event) {
+        fields: {
+          downX: 'float', downY: 'float',
+          startX: 'float', startY: 'float', moved: 'boolean'
+        },
+        methods: { onTouch: function (v, event) {
           const action = event.getActionMasked();
-          if (action === 0) { this.lastX.value = event.getRawX(); this.lastY.value = event.getRawY(); return true; }
-          if (action === 2) {
-            root.setX(Math.max(0, root.getX() + event.getRawX() - this.lastX.value));
-            root.setY(Math.max(0, root.getY() + event.getRawY() - this.lastY.value));
-            this.lastX.value = event.getRawX(); this.lastY.value = event.getRawY(); return true;
+          if (action === 0) {
+            this.downX.value = event.getRawX();
+            this.downY.value = event.getRawY();
+            this.startX.value = bubble.getX();
+            this.startY.value = bubble.getY();
+            this.moved.value = false;
+            return true;
           }
-          return action === 1;
-        } }
+          if (action === 2) {
+            const dx = event.getRawX() - this.downX.value;
+            const dy = event.getRawY() - this.downY.value;
+            if (Math.abs(dx) > dp(7) || Math.abs(dy) > dp(7)) this.moved.value = true;
+            if (this.moved.value) {
+              bubble.setX(Math.max(0, Math.min(this.startX.value + dx,
+                screen.widthPixels.value - dp(48))));
+              bubble.setY(Math.max(0, Math.min(this.startY.value + dy,
+                screen.heightPixels.value - dp(48))));
+            }
+            return true;
+          }
+          if (action === 1) {
+            if (this.moved.value) {
+              state.prefs.edit().putInt('bubbleX', Math.round(bubble.getX()))
+                .putInt('bubbleY', Math.round(bubble.getY())).apply();
+            } else {
+              const opening = root.getVisibility() !== View.VISIBLE.value;
+              root.setVisibility(opening ? View.VISIBLE.value : View.GONE.value);
+              if (opening) root.bringToFront();
+              bubble.bringToFront();
+              log(opening ? 'Mod menu opened' : 'Mod menu hidden');
+            }
+            return true;
+          }
+          return action === 3;
+        }}
       });
-      const grip = makeText('Drag here', 12); grip.setOnTouchListener(Touch.$new()); body.addView(grip, 0);
+      bubble.setOnTouchListener(Drag.$new());
 
       function clear() { content.removeAllViews(); }
       function toggle(label, key, after) {
@@ -375,15 +434,14 @@ function buildMenu() {
         const b = makeButton(tab, function () { show(tab); }); b.setTextSize(9); tabs.addView(b);
       });
       show('Gameplay'); state.updateAds();
-      if (root.getParent() === null)
-        throw new Error('Menu root has no parent after addView');
-      state.menuRoot = Java.retain(root);
-      state.menuHost = Java.retain(container);
+      if (root.getParent() === null || bubble.getParent() === null)
+        throw new Error('Activity.addContentView did not attach menu and button');
+      state.menuRoot = Java.retain(bubble);
+      state.menuHost = Java.retain(root);
       state.menuAttached = true;
       state.menuBuilding = false;
-      log('Floating menu attached to content view; parent='
-          + root.getParent().getClass().getName().toString()
-          + ' visible=' + root.getVisibility());
+      log('Floating menu attached: Gold Run style HD button; '
+        + 'panel hidden until tapped, bubble visibility=' + bubble.getVisibility());
     });
   });
 }
