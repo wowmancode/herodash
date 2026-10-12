@@ -40,7 +40,10 @@ def main():
                 assert cfg["interaction"]["path"] == "libherodashmod.script.so"
                 script = after.read(libdir + "libherodashmod.script.so").decode()
                 assert "__TARGETS__" not in script
-                assert "setImmediate(initializeMod)" in script, "Gadget script must auto-start"
+                # Frida Gadget script mode calls rpc.exports.init(), and
+                # frida-compile bundles the Java bridge into this file.
+                assert "Gadget init stage=" in script, "Missing Gadget lifecycle entrypoint"
+                assert "About to build menu" in script, "Expected mod menu payload"
                 assert "infiniteRevives" in script and "runnerMultiplier" in script
                 assert "setCurrency" in script and "UnlockEverySkin" in script
                 main_lib = lief.parse(list(after.read(libdir + "libmain.so")))
