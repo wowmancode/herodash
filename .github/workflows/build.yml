@@ -7,6 +7,7 @@ on:
       - 'mod/**'
       - 'tools/**'
       - 'README.md'
+      - 'package.json'
   workflow_dispatch:
 
 permissions:
