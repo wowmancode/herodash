@@ -3,6 +3,8 @@
  * This is loaded by Frida Gadget inside the app; no root or external overlay
  * permission is used.
  */
+import Java from 'frida-java-bridge';
+
 const TARGETS = __TARGETS__;
 const T = TARGETS[Process.arch];
 const state = {

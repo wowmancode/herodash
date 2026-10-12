@@ -7,3 +7,4 @@ tools-cache/
 morphe/.gradle/
 morphe/patches/src/main/resources/herodash/*/
 morphe/upstream/
+mod/node_modules/

@@ -86,7 +86,13 @@ def main():
     a.output.mkdir(parents=True, exist_ok=True)
     targets = json.loads((ROOT / "mod/targets.json").read_text())
     exact(a.apkm.read_bytes(), APKM_SHA256, "APKM")
-    template = (ROOT / "mod/mod.js").read_text()
+    compiler = ROOT / "mod/node_modules/.bin/frida-compile"
+    if not compiler.is_file():
+        raise RuntimeError("Install mod JavaScript dependencies first: npm ci --prefix mod")
+    template = subprocess.check_output(
+        [str(compiler), "--no-source-maps", str(ROOT / "mod/mod.js")],
+        cwd=ROOT / "mod", text=True
+    )
     if template.count("__TARGETS__") != 1:
         raise ValueError("mod.js must contain one target placeholder")
     script = template.replace("__TARGETS__", json.dumps(targets, separators=(",", ":")))

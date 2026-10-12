@@ -28,6 +28,7 @@ jobs:
       - name: Install build dependencies
         run: |
           python -m pip install --disable-pip-version-check lief==0.17.0
+          npm ci --prefix mod
           if [ ! -x "$ANDROID_HOME/build-tools/34.0.0/apksigner" ]; then
             sdkmanager_path="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)"
             test -n "$sdkmanager_path"
