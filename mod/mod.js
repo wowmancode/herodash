@@ -302,8 +302,7 @@ function buildMenu() {
   });
 }
 
-rpc.exports = {
-  init: function () {
+function initializeMod() {
     if (!T) { log('Unsupported architecture: ' + Process.arch); return; }
     const timer = setInterval(function () {
       if (Module.findBaseAddress('libil2cpp.so') === null) return;
@@ -320,5 +319,7 @@ rpc.exports = {
         });
       } catch (e) { log('Menu setup failed: ' + e); }
     }, 500);
-  }
-};
+}
+
+// Gadget's script interaction executes this file; it does not invoke RPC exports.
+setImmediate(initializeMod);
