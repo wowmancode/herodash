@@ -25,7 +25,6 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
       - name: Install build dependencies
         run: |
           python -m pip install --disable-pip-version-check lief==0.17.0
