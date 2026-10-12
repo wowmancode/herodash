@@ -43,7 +43,7 @@ function log(s) {
 }
 function status(s) {
   log(s);
-  if (state.status !== null) runUi(function () { state.status.setText(String(s)); });
+  if (state.status !== null) runUi(function () { setViewText(state.status, s); });
 }
 function il2cppModule() { return Process.findModuleByName('libil2cpp.so'); }
 function addr(name) {
@@ -206,15 +206,27 @@ function addClick(view, action) {
   });
   view.setOnClickListener(C.$new());
 }
+// Frida 17's Java bridge cannot reliably choose between setText(int) and
+// setText(CharSequence) for a plain JS string. Construct a real Java String
+// and select the CharSequence overload explicitly on all Android text widgets.
+function javaText(value) {
+  return Java.use('java.lang.String').$new(String(value));
+}
+function setViewText(view, value) {
+  view.setText.overload('java.lang.CharSequence').call(view, javaText(value));
+}
+function setViewHint(view, value) {
+  view.setHint.overload('java.lang.CharSequence').call(view, javaText(value));
+}
 function makeText(label, size) {
   const v = Java.use('android.widget.TextView').$new(state.activity);
-  v.setText(String(label)); v.setTextColor(-1); v.setTextSize(size || 14);
+  setViewText(v, label); v.setTextColor(-1); v.setTextSize(size || 14);
   v.setPadding(dp(8), dp(6), dp(8), dp(6));
   return v;
 }
 function makeButton(label, callback) {
   const v = Java.use('android.widget.Button').$new(state.activity);
-  v.setText(String(label)); v.setAllCaps(false); addClick(v, callback); return v;
+  setViewText(v, label); v.setAllCaps(false); addClick(v, callback); return v;
 }
 function buildMenu() {
   Java.perform(function () {
@@ -297,7 +309,7 @@ function buildMenu() {
       function clear() { content.removeAllViews(); }
       function toggle(label, key, after) {
         const sw = Java.use('android.widget.Switch').$new(activity);
-        sw.setText(label); sw.setTextColor(-1); sw.setChecked(!!state[key]);
+        setViewText(sw, label); sw.setTextColor(-1); sw.setChecked(!!state[key]);
         const Listener = Java.registerClass({
           name: 'com.outfit7.herodash.mod.S' + (++state.uiCount),
           implements: [Java.use('android.widget.CompoundButton$OnCheckedChangeListener')],
@@ -311,7 +323,7 @@ function buildMenu() {
         content.addView(makeText(label));
         const edit = Java.use('android.widget.EditText').$new(activity);
         edit.setInputType(2); edit.setSingleLine(true); edit.setTextColor(-1);
-        edit.setHint('0 to 2,000,000,000'); content.addView(edit);
+        setViewHint(edit, '0 to 2,000,000,000'); content.addView(edit);
         content.addView(makeButton('Set ' + label, function () {
           const value = Number(String(edit.getText().toString()));
           if (!Number.isInteger(value) || value < 0 || value > 2000000000) {
@@ -332,7 +344,7 @@ function buildMenu() {
             implements: [Java.use('android.widget.SeekBar$OnSeekBarChangeListener')],
             methods: {
               onProgressChanged: function (_v, progress, _user) {
-                state.multiplier = progress + 1; label.setText(state.multiplier + '×');
+                state.multiplier = progress + 1; setViewText(label, state.multiplier + '×');
                 saveConfig();
                 if (state.runData !== null) queue(function () {
                   state.runData.add(T.fields.runnerMultiplier).writeS64(state.multiplier);
