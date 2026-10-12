@@ -121,14 +121,10 @@ function installHooks() {
       this.data.add(T.fields.runnerMultiplier).writeS64(state.multiplier);
     }
   });
-  Interceptor.attach(addr('RunnerManager.PrepareDataForRun'), {
-    onLeave(ret) {
-      if (!ret.isNull()) {
-        state.runData = ptr(ret);
-        state.runData.add(T.fields.runnerMultiplier).writeS64(state.multiplier);
-      }
-    }
-  });
+  // Do not dereference PrepareDataForRun's return register. Its return type
+  // is not verified by the RVA extractor; a void/scalar return would turn x0
+  // into a bogus object pointer. RunnerStateData.Reset captures the real object.
+
   Interceptor.attach(addr('RunnerManager.EndRun'), {
     onEnter() { state.runData = null; }
   });
