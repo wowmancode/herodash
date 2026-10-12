@@ -1,0 +1,46 @@
+name: Delete Hero Dash build artifacts after 12 hours
+
+on:
+  schedule:
+    - cron: '11,41 * * * *'
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/artifact-cleanup.yml'
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: herodash-artifact-cleanup
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Remove Hero Dash artifacts older than 12 hours
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const cutoff = Date.now() - 12 * 60 * 60 * 1000;
+            const artifacts = await github.paginate(
+              github.rest.actions.listArtifactsForRepo,
+              { owner, repo, per_page: 100 }
+            );
+            let deleted = 0;
+            let recovered = 0;
+            for (const artifact of artifacts) {
+              if (!artifact.name.startsWith('herodash-')) continue;
+              if (new Date(artifact.created_at).getTime() >= cutoff) continue;
+              await github.rest.actions.deleteArtifact({
+                owner, repo, artifact_id: artifact.id
+              });
+              deleted++;
+              recovered += artifact.size_in_bytes || 0;
+            }
+            core.info('Deleted ' + deleted + ' artifacts older than 12 hours; ' +
+                      'removed ZIP bytes: ' + recovered);
