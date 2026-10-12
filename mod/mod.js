@@ -3,6 +3,8 @@
  * This is loaded by Frida Gadget inside the app; no root or external overlay
  * permission is used.
  */
+import Java from 'frida-java-bridge';
+
 const TARGETS = __TARGETS__;
 const T = TARGETS[Process.arch];
 const state = {
@@ -12,17 +14,35 @@ const state = {
   status: null, activity: null, installed: false, uiCount: 0
 };
 
+// Report logs without touching ART/Java; native logging works before the VM is ready.
+let androidLogWrite = null;
 function log(s) {
-  console.log('[HeroDashMod] ' + s);
-  if (Java.available) Java.perform(function () {
-    Java.use('android.util.Log').i('HeroDashMod', String(s));
-  });
+  const message = String(s);
+  console.log('[HeroDashMod] ' + message);
+  try {
+    if (androidLogWrite === null) {
+      const liblog = Process.findModuleByName('liblog.so');
+      if (liblog === null) return;
+      androidLogWrite = new NativeFunction(liblog.getExportByName('__android_log_write'),
+                                           'int', ['int', 'pointer', 'pointer']);
+    }
+    androidLogWrite(4, Memory.allocUtf8String('HeroDashMod'), Memory.allocUtf8String(message));
+  } catch (error) {
+    console.error('[HeroDashMod] Native logging unavailable: ' + error);
+  }
 }
 function status(s) {
   log(s);
   if (state.status !== null) runUi(function () { state.status.setText(String(s)); });
 }
-function addr(name) { return Module.findBaseAddress('libil2cpp.so').add(T.methods[name]); }
+function il2cppModule() { return Process.findModuleByName('libil2cpp.so'); }
+function addr(name) {
+  const module = il2cppModule();
+  if (module === null) throw new Error('libil2cpp.so is not loaded');
+  if (!Object.prototype.hasOwnProperty.call(T.methods, name))
+    throw new Error('Missing IL2CPP method: ' + name);
+  return module.base.add(T.methods[name]);
+}
 function fn(name, ret, args) { return new NativeFunction(addr(name), ret, args); }
 function queue(work) { state.pending.push(work); }
 function saveConfig() {
@@ -33,13 +53,12 @@ function saveConfig() {
 }
 
 function installHooks() {
-  if (state.installed || !T || Module.findBaseAddress('libil2cpp.so') === null) return;
-  state.installed = true;
+  if (state.installed || !T || il2cppModule() === null) return;
   const getState = fn('HDCurrencyManager.get_HDCurrencyState', 'pointer', ['pointer', 'pointer']);
   const getAccount = fn('HDCurrencyState.GetHDAccount', 'pointer', ['pointer', 'pointer', 'pointer']);
   const writeChanges = fn('CurrencyManager.WriteChanges', 'int', ['pointer', 'int', 'pointer']);
   const balanceEvent = fn('CurrencyManager.CheckAndFireBalanceChangeEvent', 'void', ['pointer', 'pointer', 'int', 'pointer']);
-  const stringNew = new NativeFunction(Module.findExportByName('libil2cpp.so', 'il2cpp_string_new'), 'pointer', ['pointer']);
+  const stringNew = new NativeFunction(Process.getModuleByName('libil2cpp.so').getExportByName('il2cpp_string_new'), 'pointer', ['pointer']);
   const unlockEverySkin = fn('CharacterManager.UnlockEverySkin', 'void', ['pointer', 'pointer']);
   const unlockCharacter = fn('CharacterManager.FullyUnlockCharacterAndSkins', 'void', ['pointer', 'int', 'pointer']);
   const saveMeHandled = fn('SaveMeState.OnSaveMeHandled', 'void', ['pointer', 'int', 'int', 'int', 'pointer']);
@@ -145,6 +164,7 @@ function installHooks() {
     if (state.noAds && state.bannerManager !== null)
       queue(function () { setBanner(state.bannerManager, 0, ptr(0)); });
   };
+  state.installed = true;
   log('Native hooks installed for ' + Process.arch);
 }
 
@@ -315,7 +335,7 @@ function initializeMod() {
       if (nativeTimer !== null) return;
       nativeTimer = setTimeout(function () {
         const poll = setInterval(function () {
-          if (Module.findBaseAddress('libil2cpp.so') === null) return;
+          if (il2cppModule() === null) return;
           clearInterval(poll);
           try { installHooks(); } catch (e) { log('Hook setup failed: ' + e.stack); }
         }, 1000);
@@ -329,11 +349,17 @@ function initializeMod() {
           if (Unity.currentActivity.value === null) return;
           clearInterval(menuTimer);
           scheduleNativeHooks();
+          log('About to build menu on Android ' + Java.androidVersion);
           buildMenu();
         });
       } catch (e) { log('Menu setup failed: ' + e); }
     }, 500);
 }
 
-// Gadget's script interaction executes this file; it does not invoke RPC exports.
-setImmediate(initializeMod);
+// Gadget script interaction invokes rpc.exports.init() automatically.
+rpc.exports = {
+  init: function (stage) {
+    log('Gadget init stage=' + stage + ' arch=' + Process.arch);
+    initializeMod();
+  }
+};
