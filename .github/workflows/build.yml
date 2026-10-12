@@ -66,7 +66,7 @@ jobs:
             --output build
       - name: Build diagnostic APK splits
         run: |
-          for mode in none gadget; do
+          for mode in none gadget menu hooks; do
             python tools/build.py \
               --apkm input/herodash.apkm \
               --gadget-arm64 tools-cache/arm64.so \
@@ -84,6 +84,16 @@ jobs:
         with:
           name: herodash-diagnostic-gadget-only
           path: diagnostic-gadget/*-patched.apk
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: herodash-diagnostic-menu-only
+          path: diagnostic-menu/*-patched.apk
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: herodash-diagnostic-hooks-only
+          path: diagnostic-hooks/*-patched.apk
           if-no-files-found: error
       - name: Verify patch and signatures
         run: |
