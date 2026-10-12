@@ -21,6 +21,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Frida 17 Java bridge toolchain
+        run: npm install --no-audit --no-fund
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -45,10 +50,10 @@ jobs:
             'https://api.github.com/repos/${{ github.repository }}/releases/assets/634215535' \
             -o input/herodash.apkm
           curl --fail --location --retry 3 \
-            'https://github.com/frida/frida/releases/download/16.7.19/frida-gadget-16.7.19-android-arm64.so.xz' \
+            'https://github.com/frida/frida/releases/download/17.23.0/frida-gadget-17.23.0-android-arm64.so.xz' \
             -o tools-cache/arm64.so.xz
           curl --fail --location --retry 3 \
-            'https://github.com/frida/frida/releases/download/16.7.19/frida-gadget-16.7.19-android-arm.so.xz' \
+            'https://github.com/frida/frida/releases/download/17.23.0/frida-gadget-17.23.0-android-arm.so.xz' \
             -o tools-cache/arm.so.xz
           xz -d tools-cache/arm64.so.xz
           xz -d tools-cache/arm.so.xz
@@ -66,7 +71,7 @@ jobs:
             --output build
       - name: Build diagnostic APK splits
         run: |
-          for mode in none gadget menu hooks; do
+          for mode in none gadget java menu hooks; do
             python tools/build.py \
               --apkm input/herodash.apkm \
               --gadget-arm64 tools-cache/arm64.so \
@@ -95,10 +100,21 @@ jobs:
           name: herodash-diagnostic-hooks-only
           path: diagnostic-hooks/*-patched.apk
           if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: herodash-diagnostic-java-bridge
+          path: diagnostic-java/*-patched.apk
+          if-no-files-found: error
       - name: Verify patch and signatures
         run: |
           python tools/verify.py --original input/herodash.apkm --output build \
             --build-tools "$ANDROID_HOME/build-tools/34.0.0"
+      # Deliver the signed APK test independently of the Morphe Gradle build.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: herodash-frida17-test-apks
+          path: build/*-patched.apk
+          if-no-files-found: error
       - name: Build Morphe patch bundle from public source dependencies
         env:
           GH_TOKEN: ${{ github.token }}
@@ -124,23 +140,6 @@ jobs:
             README.md
           if-no-files-found: error
 
-  emulator-smoke:
-    needs: build
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: herodash-26.5.1.12192-local-mod
-          path: artifact
-      - name: Enable KVM for Android emulator
-        run: sudo chmod 666 /dev/kvm
-      - uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          target: google_apis
-          arch: x86_64
-          profile: pixel_6
-          disable-animations: true
-          script: bash tools/emulator_smoke.sh
+# An x86_64 emulator cannot execute this game's ARM-only IL2CPP binaries.
+# The previous emulator-smoke job attempted to install ARM64 APK splits there.
+# Restore a runtime test only when an ARM-compatible runner/device is available.
