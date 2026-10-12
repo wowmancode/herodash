@@ -208,8 +208,11 @@ function buildMenu() {
       const content = Linear.$new(activity); content.setOrientation(1); scroll.addView(content);
       const info = makeText('Ready', 12); body.addView(info); state.status = info;
       const lp = Frame.LayoutParams.$new(dp(310), -2); lp.gravity.value = Gravity.TOP.value | Gravity.LEFT.value;
-      const decor = Java.cast(activity.getWindow().getDecorView(), Frame);
-      decor.addView(root, lp); root.setX(dp(12)); root.setY(dp(60));
+      const decor = activity.getWindow().getDecorView();
+      // The decor root is not guaranteed to be a FrameLayout on every device.
+      const ViewGroup = Java.use('android.view.ViewGroup');
+      const container = Java.cast(decor, ViewGroup);
+      container.addView(root, lp); root.setX(dp(12)); root.setY(dp(60));
 
       const Touch = Java.registerClass({
         name: 'com.outfit7.herodash.mod.Drag' + (++state.uiCount),
@@ -304,18 +307,29 @@ function buildMenu() {
 
 function initializeMod() {
     if (!T) { log('Unsupported architecture: ' + Process.arch); return; }
-    const timer = setInterval(function () {
-      if (Module.findBaseAddress('libil2cpp.so') === null) return;
-      clearInterval(timer);
-      try { installHooks(); } catch (e) { log('Hook setup failed: ' + e.stack); }
-    }, 250);
+    // Do not intercept Unity/IL2CPP initialization: early native hooks can
+    // execute while the engine is still constructing its managed state.
+    // Wait for the menu and then allow the game to finish loading first.
+    let nativeTimer = null;
+    function scheduleNativeHooks() {
+      if (nativeTimer !== null) return;
+      nativeTimer = setTimeout(function () {
+        const poll = setInterval(function () {
+          if (Module.findBaseAddress('libil2cpp.so') === null) return;
+          clearInterval(poll);
+          try { installHooks(); } catch (e) { log('Hook setup failed: ' + e.stack); }
+        }, 1000);
+      }, 20000);
+    }
     const menuTimer = setInterval(function () {
       try {
         if (!Java.available) return;
         Java.perform(function () {
           const Unity = Java.use('com.unity3d.player.UnityPlayer');
           if (Unity.currentActivity.value === null) return;
-          clearInterval(menuTimer); buildMenu();
+          clearInterval(menuTimer);
+          scheduleNativeHooks();
+          buildMenu();
         });
       } catch (e) { log('Menu setup failed: ' + e); }
     }, 500);
