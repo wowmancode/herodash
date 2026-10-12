@@ -84,26 +84,31 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: herodash-diagnostic-no-injection
+          retention-days: 3
           path: diagnostic-none/*-patched.apk
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
           name: herodash-diagnostic-gadget-only
+          retention-days: 3
           path: diagnostic-gadget/*-patched.apk
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
           name: herodash-diagnostic-menu-only
+          retention-days: 3
           path: diagnostic-menu/*-patched.apk
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
           name: herodash-diagnostic-hooks-only
+          retention-days: 3
           path: diagnostic-hooks/*-patched.apk
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
           name: herodash-diagnostic-java-bridge
+          retention-days: 3
           path: diagnostic-java/*-patched.apk
           if-no-files-found: error
       - name: Verify patch and signatures
@@ -114,6 +119,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: herodash-frida17-test-apks
+          retention-days: 5
           path: build/*-patched.apk
           if-no-files-found: error
       - name: Build Morphe patch bundle from public source dependencies
@@ -135,6 +141,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: herodash-26.5.1.12192-local-mod
+          retention-days: 5
           path: |
             build/*-patched.apk
             build/*.mpp
