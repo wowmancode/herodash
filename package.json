@@ -1,0 +1,9 @@
+{
+  "private": true,
+  "type": "module",
+  "description": "Reproducible Frida 17 agent bundling for Hero Dash",
+  "devDependencies": {
+    "frida-compile": "19.0.5",
+    "frida-java-bridge": "7.0.13"
+  }
+}
