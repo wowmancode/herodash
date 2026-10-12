@@ -11,7 +11,8 @@ const state = {
   multiplier: 1, noAds: false, infiniteRevives: false,
   currencyManager: null, characterManager: null, bannerManager: null,
   runData: null, saveMeState: null, pending: [], prefs: null,
-  status: null, activity: null, installed: false, uiCount: 0
+  status: null, activity: null, installed: false, uiCount: 0,
+  menuAttached: false, menuBuilding: false
 };
 
 // Report logs without touching ART/Java; native logging works before the VM is ready.
@@ -165,15 +166,26 @@ function installHooks() {
 }
 
 function runUi(action) {
-  if (!Java.available || state.activity === null) return;
-  Java.perform(function () {
-    const Runnable = Java.registerClass({
-      name: 'com.outfit7.herodash.mod.R' + (++state.uiCount),
-      implements: [Java.use('java.lang.Runnable')],
-      methods: { run: action }
+  if (!Java.available || state.activity === null) {
+    log('Menu UI deferred: Java or activity unavailable');
+    state.menuBuilding = false;
+    return;
+  }
+  // Avoid generating a custom Runnable/DEX solely to reach Android's UI
+  // thread. Frida Java bridge provides an existing main-thread dispatcher.
+  try {
+    Java.scheduleOnMainThread(function () {
+      try {
+        action();
+      } catch (e) {
+        state.menuBuilding = false;
+        log('Menu UI exception: ' + (e.stack || e));
+      }
     });
-    state.activity.runOnUiThread(Runnable.$new());
-  });
+  } catch (e) {
+    state.menuBuilding = false;
+    log('Menu UI dispatch exception: ' + (e.stack || e));
+  }
 }
 function dp(n) { return Math.round(n * state.activity.getResources().getDisplayMetrics().density.value); }
 function addClick(view, action) {
@@ -196,10 +208,23 @@ function makeButton(label, callback) {
 }
 function buildMenu() {
   Java.perform(function () {
-    const Unity = Java.use('com.unity3d.player.UnityPlayer');
-    const activity = Unity.currentActivity.value;
-    if (activity === null) return;
-    state.activity = activity;
+    let activity;
+    try {
+      const Unity = Java.use('com.unity3d.player.UnityPlayer');
+      activity = Unity.currentActivity.value;
+      if (activity === null) {
+        state.menuBuilding = false;
+        log('Menu waiting: Unity.currentActivity is null');
+        return;
+      }
+      // Retain across the async main-thread callback.
+      state.activity = Java.retain(activity);
+    } catch (e) {
+      state.menuBuilding = false;
+      log('Menu activity lookup failed: ' + (e.stack || e));
+      return;
+    }
+    log('Menu activity ready: ' + activity.getClass().getName().toString());
     state.prefs = activity.getSharedPreferences('herodash_mod', 0);
     state.multiplier = Math.max(1, Math.min(1000, state.prefs.getInt('multiplier', 1)));
     state.noAds = state.prefs.getBoolean('noAds', false);
@@ -228,7 +253,10 @@ function buildMenu() {
       // The decor root is not guaranteed to be a FrameLayout on every device.
       const ViewGroup = Java.use('android.view.ViewGroup');
       const container = Java.cast(decor, ViewGroup);
-      container.addView(root, lp); root.setX(dp(12)); root.setY(dp(60));
+      container.addView(root, lp);
+      root.setX(dp(12)); root.setY(dp(60));
+      root.setVisibility(View.VISIBLE.value);
+      root.bringToFront();
 
       const Touch = Java.registerClass({
         name: 'com.outfit7.herodash.mod.Drag' + (++state.uiCount),
@@ -316,7 +344,9 @@ function buildMenu() {
         const b = makeButton(tab, function () { show(tab); }); b.setTextSize(9); tabs.addView(b);
       });
       show('Gameplay'); state.updateAds();
-      log('Floating menu attached');
+      state.menuAttached = true;
+      state.menuBuilding = false;
+      log('Floating menu attached: ' + root.getWidth() + 'px, visibility=' + root.getVisibility());
     });
   });
 }
@@ -337,18 +367,50 @@ function initializeMod() {
         }, 1000);
       }, 20000);
     }
+    // Unity may replace its window content while the loading screen is up.
+    // Schedule attachment after the activity settles; retry on recoverable
+    // Java/UI errors instead of losing the menu forever after the first try.
+    let menuScheduled = false;
+    let menuAttempts = 0;
     const menuTimer = setInterval(function () {
+      if (state.menuAttached) {
+        clearInterval(menuTimer);
+        return;
+      }
+      if (menuScheduled || state.menuBuilding) return;
       try {
-        if (!Java.available) return;
+        if (!Java.available) {
+          if (++menuAttempts % 12 === 0) log('Menu waiting for Java VM');
+          return;
+        }
         Java.perform(function () {
-          const Unity = Java.use('com.unity3d.player.UnityPlayer');
-          if (Unity.currentActivity.value === null) return;
-          clearInterval(menuTimer);
-          scheduleNativeHooks();
-          log('About to build menu on Android ' + Java.androidVersion);
-          buildMenu();
+          try {
+            const Unity = Java.use('com.unity3d.player.UnityPlayer');
+            if (Unity.currentActivity.value === null) {
+              if (++menuAttempts % 12 === 0) log('Menu waiting for Unity activity');
+              return;
+            }
+            scheduleNativeHooks();
+            menuScheduled = true;
+            log('Unity activity detected; menu attachment scheduled');
+            setTimeout(function () {
+              menuScheduled = false;
+              if (state.menuAttached || state.menuBuilding) return;
+              state.menuBuilding = true;
+              try {
+                buildMenu();
+              } catch (e) {
+                state.menuBuilding = false;
+                log('Menu build failed: ' + (e.stack || e));
+              }
+            }, 4000);
+          } catch (e) {
+            log('Menu setup error: ' + (e.stack || e));
+          }
         });
-      } catch (e) { log('Menu setup failed: ' + e); }
+      } catch (e) {
+        log('Menu polling error: ' + (e.stack || e));
+      }
     }, 500);
 }
 
