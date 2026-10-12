@@ -40,6 +40,7 @@ def main():
                 assert cfg["interaction"]["path"] == "libherodashmod.script.so"
                 script = after.read(libdir + "libherodashmod.script.so").decode()
                 assert "__TARGETS__" not in script
+                assert "setImmediate(initializeMod)" in script, "Gadget script must auto-start"
                 assert "infiniteRevives" in script and "runnerMultiplier" in script
                 assert "setCurrency" in script and "UnlockEverySkin" in script
                 main_lib = lief.parse(list(after.read(libdir + "libmain.so")))
