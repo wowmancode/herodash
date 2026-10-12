@@ -80,7 +80,7 @@ def main():
     p.add_argument("--gadget-arm", required=True, type=Path)
     p.add_argument("--build-tools", required=True, type=Path)
     p.add_argument("--output", required=True, type=Path)
-    p.add_argument("--diagnostic", choices=["none", "gadget", "menu", "hooks"], default=None)
+    p.add_argument("--diagnostic", choices=["none", "gadget", "java", "menu", "hooks"], default=None)
     p.add_argument("--keystore", type=Path)
     p.add_argument("--password", default="android")
     a = p.parse_args()
@@ -92,41 +92,42 @@ def main():
         raise ValueError("mod.js must contain one target placeholder")
     script = template.replace("__TARGETS__", json.dumps(targets, separators=(",", ":")))
     if a.diagnostic == "gadget":
-        script = "console.log('[HeroDashDiagnostic] Gadget loaded; no hooks or menu');\n"
-    if a.diagnostic == "menu":
-        # Entire original UI code, but never install native hooks.
-        script = script.replace(
-            "setImmediate(initializeMod);",
-            """setImmediate(function () {
-  const timer = setInterval(function () {
-    try {
-      if (!Java.available) return;
-      Java.perform(function () {
-        const Unity = Java.use('com.unity3d.player.UnityPlayer');
-        if (Unity.currentActivity.value === null) return;
-        clearInterval(timer);
-        state.setCurrency = function () { status('Diagnostic: hooks disabled'); };
-        state.unlockLocal = state.stockGadgets = state.reviveNow =
-          function () { status('Diagnostic: hooks disabled'); };
-        state.updateAds = function () {};
-        buildMenu();
-      });
-    } catch (e) { log('Diagnostic menu failed: ' + e.stack); }
-  }, 500);
-});""")
-    elif a.diagnostic == "hooks":
-        # Install native hooks without creating any Android menu.
-        script = script.replace(
-            "setImmediate(initializeMod);",
-            """setImmediate(function () {
+        script = "console.log('[HeroDashDiagnostic] Frida 17 gadget loaded');\\n"
+    elif a.diagnostic == "java":
+        script = """import Java from 'frida-java-bridge';
+const androidLog = new NativeFunction(
+  Process.getModuleByName('liblog.so').getExportByName('__android_log_write'),
+  'int', ['int', 'pointer', 'pointer']);
+function marker(s) {
+  androidLog(4, Memory.allocUtf8String('HeroDashProbe'), Memory.allocUtf8String(s));
+}
+rpc.exports = { init: function () {
+  marker('before Java.perform');
   setTimeout(function () {
-    const poll = setInterval(function () {
-      if (Module.findBaseAddress('libil2cpp.so') === null) return;
-      clearInterval(poll);
-      try { installHooks(); } catch (e) { log('Diagnostic hooks failed: ' + e.stack); }
-    }, 1000);
-  }, 20000);
-});""")
+    marker('enter Java.perform');
+    Java.perform(function () { marker('Java.perform callback succeeded'); });
+  }, 1000);
+}};
+"""
+    elif a.diagnostic == "menu":
+        script = script.replace(
+            "    initializeMod();",
+            """    state.setCurrency = state.unlockLocal = state.stockGadgets =
+      state.reviveNow = function () { status('Native hooks disabled for menu test'); };
+    state.updateAds = function () {};
+    initializeMod();""")
+        script = script.replace("          scheduleNativeHooks();",
+                                "          log('Diagnostic: native hooks disabled');")
+    elif a.diagnostic == "hooks":
+        script = script.replace(
+            "    initializeMod();",
+            """    setTimeout(function () {
+      const poll = setInterval(function () {
+        if (il2cppModule() === null) return;
+        clearInterval(poll);
+        try { installHooks(); } catch (e) { log('Hooks-only failed: ' + e.stack); }
+      }, 1000);
+    }, 20000);""")
     with zipfile.ZipFile(a.apkm) as bundle, tempfile.TemporaryDirectory() as temp_name:
         temp = Path(temp_name)
         info = json.loads(bundle.read("info.json"))
@@ -137,6 +138,23 @@ def main():
         with zipfile.ZipFile(base) as apk:
             exact(apk.read("assets/bin/Data/Managed/Metadata/global-metadata.dat"),
                   targets["arm64"]["metadataSha256"], "IL2CPP metadata")
+        if a.diagnostic != "none":
+            # Frida 17 removed the built-in Java bridge. Bundle it into each
+            # script using a temporary entry point in mod/ for Node resolution.
+            compiler = ROOT / "node_modules/.bin/frida-compile"
+            if not compiler.is_file():
+                raise RuntimeError("Run npm install before building (frida-compile missing)")
+            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".js",
+                                             prefix=".herodash-agent-", dir=ROOT / "mod",
+                                             delete=False) as source_file:
+                source_file.write(script)
+                source = Path(source_file.name)
+            try:
+                compiled = temp / "compiled-agent.js"
+                run(compiler, source, "-o", compiled, "-S", "-c")
+                script = compiled.read_text(encoding="utf-8")
+            finally:
+                source.unlink(missing_ok=True)
         if a.diagnostic == "none":
             split64 = temp / "split-arm64-unsigned.apk"
             split32 = temp / "split-arm-unsigned.apk"
