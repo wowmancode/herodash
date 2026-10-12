@@ -37,7 +37,7 @@ This build is Unity IL2CPP (metadata version 31). `global-metadata.dat` is in
 contains platform and SDK code. Morphe supports bytecode, decoded resource, and
 raw resource patches; its raw resource API can replace native libraries, while
 its bytecode patcher does not transform compiled IL2CPP methods. This project
-adds a dependency to `libmain.so` and packages Frida Gadget 16.7.19 plus a
+adds a dependency to `libmain.so` and packages Frida Gadget 17.23.0 plus a
 version-pinned script inside each ABI split. The source library and metadata
 hashes are checked before building. The script runs inside the game process;
 it needs neither root nor the Android draw-over-other-apps permission.
@@ -53,8 +53,8 @@ run; these artifacts are installable, but updates from different runs require
 uninstalling the previous mod first.
 
 To build locally, install Python 3.12, Java 17, Android build-tools 34.0.0,
-and `lief==0.17.0`. Download Frida Gadget 16.7.19 for Android arm64 and arm,
-decompress both `.so.xz` files, then run:
+and `lief==0.17.0`. Download Frida Gadget 17.23.0 for Android arm64 and arm,
+decompress both `.so.xz` files, install Java bridge tooling with `npm install`, then run:
 
 ```sh
 python tools/build.py \
@@ -108,6 +108,48 @@ does not reverse balances or game progress already written to the local save.
 For the `.mpp`, select this patch bundle in Morphe and provide the exact
 `26.5.1.12192` APKM as input. Install Morphe's signed output according to its
 instructions after removing the original app with the conflicting signature.
+
+
+## Crash investigation (Android 17, Pixel arm64)
+
+The original build used Frida Gadget 16.7.19 and crashed with SIGSEGV about
+one second after launch, inside an anonymous executable mapping. A signed
+unmodified-libraries diagnostic and a Gadget-only diagnostic both booted,
+strongly implicating script execution instead of repackaging. The Android
+startup path calls `Java.perform()` immediately. Upstream Frida reports describe
+near-identical ARM64 crash register signatures when the Frida 16 Java bridge is
+entered on newer Android devices.
+
+This experimental revision uses **Frida Gadget 17.23.0** with a bundled
+`frida-java-bridge@7.0.13`. It also logs through Android's native liblog
+to leave `HeroDashMod` breadcrumbs even when Java cannot initialize.
+The required Frida 17 `Process.findModuleByName()` and instance export APIs
+replace the removed Frida 16 static `Module.findBaseAddress()` and
+`Module.findExportByName()` calls. Gadget script mode automatically invokes
+`rpc.exports.init()`, so the script now uses the documented lifecycle.
+
+The Actions workflow publishes `herodash-frida17-test-apks` even if the
+optional Morphe build subsequently fails. For troubleshooting it also publishes
+`herodash-diagnostic-java-bridge` (calls only `Java.perform()`), the
+`menu-only` and `hooks-only` tests, and no-injection and Gadget-only tests.
+Install the base and exactly one matching ABI split for each test. Do not
+mix APK files from different artifacts because the signing keys differ.
+
+To capture **useful** logs after a native crash:
+
+```sh
+adb logcat -c
+adb shell am force-stop com.outfit7.herodash
+adb shell monkey -p com.outfit7.herodash 1
+sleep 8
+adb logcat -d -b main,crash -v time | grep -E 'HeroDashMod|HeroDashProbe|Fatal signal|DEBUG|AndroidRuntime'
+```
+
+**Testing boundaries:** These commits have not been run on an Android 17
+physical device. The CI job once called `emulator-smoke` tried to install
+ARM64-only native libraries into an x86_64 emulator; this invalid test has
+been removed until an ARM-compatible test device or runner is available.
+Java bridge compatibility on the user's exact device remains to be proven.
 
 ## Verification boundaries
 
