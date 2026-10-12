@@ -43,7 +43,13 @@ def main():
                 # Frida Gadget script mode calls rpc.exports.init(), and
                 # frida-compile bundles the Java bridge into this file.
                 assert "Gadget init stage=" in script, "Missing Gadget lifecycle entrypoint"
-                assert "About to build menu" in script, "Expected mod menu payload"
+                # These markers belong to the current asynchronous menu implementation.
+                # The old "About to build menu" message was removed when the UI
+                # initialization gained delayed attachment and retry support.
+                assert "Unity activity detected; menu attachment scheduled" in script, (
+                    "Expected current menu scheduling code"
+                )
+                assert "Floating menu attached" in script, "Expected mod menu attachment code"
                 assert "infiniteRevives" in script and "runnerMultiplier" in script
                 assert "setCurrency" in script and "UnlockEverySkin" in script
                 main_lib = lief.parse(list(after.read(libdir + "libmain.so")))
