@@ -54,6 +54,141 @@ function addr(name) {
   return module.base.add(T.methods[name]);
 }
 function fn(name, ret, args) { return new NativeFunction(addr(name), ret, args); }
+
+// ---- IL2CPP runtime API helpers -------------------------------------------
+const il2cppApiCache = {};
+function il2cppApi(name, ret, args) {
+  if (Object.prototype.hasOwnProperty.call(il2cppApiCache, name)) return il2cppApiCache[name];
+  const module = il2cppModule();
+  const p = module === null ? null : module.findExportByName(name);
+  il2cppApiCache[name] = p === null ? null : new NativeFunction(p, ret, args);
+  return il2cppApiCache[name];
+}
+// Menu taps run on Android's UI thread, which is not Unity's main thread.
+// Register it with the IL2CPP runtime before calling managed code; attaching
+// an already-attached thread just returns the existing thread object.
+function attachIl2cppThread() {
+  const domainGet = il2cppApi('il2cpp_domain_get', 'pointer', []);
+  const threadAttach = il2cppApi('il2cpp_thread_attach', 'pointer', ['pointer']);
+  if (domainGet !== null && threadAttach !== null) threadAttach(domainGet());
+}
+function findIl2cppClass(className) {
+  const domainGet = il2cppApi('il2cpp_domain_get', 'pointer', []);
+  const getAssemblies = il2cppApi('il2cpp_domain_get_assemblies', 'pointer', ['pointer', 'pointer']);
+  const getImage = il2cppApi('il2cpp_assembly_get_image', 'pointer', ['pointer']);
+  const classCount = il2cppApi('il2cpp_image_get_class_count', 'size_t', ['pointer']);
+  const getClass = il2cppApi('il2cpp_image_get_class', 'pointer', ['pointer', 'size_t']);
+  const className_ = il2cppApi('il2cpp_class_get_name', 'pointer', ['pointer']);
+  const fromName = il2cppApi('il2cpp_class_from_name', 'pointer', ['pointer', 'pointer', 'pointer']);
+  if (domainGet === null || getAssemblies === null || getImage === null) return null;
+  const sizeOut = Memory.alloc(Process.pointerSize);
+  const assemblies = getAssemblies(domainGet(), sizeOut);
+  const count = Process.pointerSize === 8 ? sizeOut.readU64().toNumber() : sizeOut.readU32();
+  const emptyNs = Memory.allocUtf8String('');
+  const nameStr = Memory.allocUtf8String(className);
+  for (let i = 0; i < count; i++) {
+    const image = getImage(assemblies.add(i * Process.pointerSize).readPointer());
+    if (fromName !== null) {
+      const k = fromName(image, emptyNs, nameStr);
+      if (!k.isNull()) return k;
+    }
+    if (classCount === null || getClass === null || className_ === null) continue;
+    const n = Number(classCount(image));
+    for (let j = 0; j < n; j++) {
+      const k = getClass(image, j);
+      if (!k.isNull() && className_(k).readUtf8String() === className) return k;
+    }
+  }
+  return null;
+}
+// Enumerate live managed objects of a class through Unity's liveness API
+// (the same mechanism frida-il2cpp-bridge's Il2Cpp.gc.choose uses).
+function chooseLiveObjects(klass) {
+  const found = [];
+  const onObjects = new NativeCallback(function (arr, size) {
+    for (let i = 0; i < size; i++) found.push(arr.add(i * Process.pointerSize).readPointer());
+  }, 'void', ['pointer', 'int', 'pointer']);
+  const allocStruct = il2cppApi('il2cpp_unity_liveness_allocate_struct', 'pointer',
+    ['pointer', 'int', 'pointer', 'pointer', 'pointer']);
+  const fromStatics = il2cppApi('il2cpp_unity_liveness_calculation_from_statics', 'void', ['pointer']);
+  if (fromStatics === null) return found;
+  if (allocStruct !== null) {
+    const finalize = il2cppApi('il2cpp_unity_liveness_finalize', 'void', ['pointer']);
+    const freeStruct = il2cppApi('il2cpp_unity_liveness_free_struct', 'void', ['pointer']);
+    const stopWorld = il2cppApi('il2cpp_stop_gc_world', 'void', []);
+    const startWorld = il2cppApi('il2cpp_start_gc_world', 'void', []);
+    const libc = Process.getModuleByName('libc.so');
+    const realloc = new NativeFunction(libc.getExportByName('realloc'), 'pointer', ['pointer', 'size_t']);
+    const free = new NativeFunction(libc.getExportByName('free'), 'void', ['pointer']);
+    const reallocCb = new NativeCallback(function (p, size) {
+      if (!p.isNull() && Number(size) === 0) { free(p); return ptr(0); }
+      return realloc(p, size);
+    }, 'pointer', ['pointer', 'size_t', 'pointer']);
+    if (stopWorld !== null) stopWorld();
+    try {
+      const st = allocStruct(klass, 0, onObjects, ptr(0), reallocCb);
+      fromStatics(st);
+      if (finalize !== null) finalize(st);
+      if (startWorld !== null) startWorld();
+      if (freeStruct !== null) freeStruct(st);
+    } catch (e) {
+      if (startWorld !== null) startWorld();
+      throw e;
+    }
+  } else {
+    const begin = il2cppApi('il2cpp_unity_liveness_calculation_begin', 'pointer',
+      ['pointer', 'int', 'pointer', 'pointer', 'pointer', 'pointer']);
+    const end = il2cppApi('il2cpp_unity_liveness_calculation_end', 'void', ['pointer']);
+    if (begin === null || end === null) return found;
+    const noop = new NativeCallback(function () {}, 'void', []);
+    const st = begin(klass, 0, onObjects, ptr(0), noop, noop);
+    fromStatics(st);
+    end(st);
+  }
+  return found;
+}
+function findCharacterManager() {
+  if (state.characterManager !== null) return state.characterManager;
+  const klass = findIl2cppClass('CharacterManager');
+  if (klass === null) { log('CharacterManager class not found'); return null; }
+  const objs = chooseLiveObjects(klass);
+  log('Live CharacterManager instances: ' + objs.length);
+  if (objs.length > 0) state.characterManager = objs[0];
+  return state.characterManager;
+}
+// CharacterManager.Init runs once while the game loads, long before the
+// delayed hooks go in. Install just this pointer-capturing hook as soon as
+// libil2cpp.so is mapped so the manager is known when the user taps Unlock.
+let earlyCaptureInstalled = false;
+function installEarlyCapture() {
+  if (earlyCaptureInstalled || !T || il2cppModule() === null) return;
+  earlyCaptureInstalled = true;
+  try {
+    Interceptor.attach(addr('CharacterManager.Init'), {
+      onEnter(args) {
+        state.characterManager = ptr(args[0]);
+        log('CharacterManager captured: ' + state.characterManager);
+      }
+    });
+    log('Early CharacterManager capture installed');
+  } catch (e) {
+    log('Early capture failed: ' + e);
+  }
+}
+function watchForIl2cpp() {
+  installEarlyCapture();
+  if (earlyCaptureInstalled) return;
+  try {
+    Process.attachModuleObserver({
+      onAdded(module) { if (module.name === 'libil2cpp.so') installEarlyCapture(); }
+    });
+  } catch (e) {
+    const t = setInterval(function () {
+      installEarlyCapture();
+      if (earlyCaptureInstalled) clearInterval(t);
+    }, 20);
+  }
+}
 function queue(work) { state.pending.push(work); }
 function drainQueue() {
   // Drain all pending work; called from multiple IL2CPP hooks to
@@ -105,15 +240,23 @@ function installHooks() {
   // Unity's main thread).  Fall back to queue() only if we need to wait for
   // a manager pointer to be captured by a game hook.
   function tryDirect(work) {
-    try { work(); } catch (e) { status('Action failed: ' + e); }
+    try { attachIl2cppThread(); work(); } catch (e) { status('Action failed: ' + e); }
   }
   state.setCurrency = function (id, value) { tryDirect(function () { setCurrency(id, value); }); };
   state.unlockLocal = function () {
     tryDirect(function () {
-      if (state.characterManager === null) { status('Open the game home screen first'); return; }
-      for (let type = 1; type <= 5; type++) unlockCharacter(state.characterManager, type, ptr(0));
-      unlockEverySkin(state.characterManager, ptr(0));
-      status('Local hero and outfit unlock methods completed');
+      let mgr = state.characterManager;
+      if (mgr === null) {
+        try { mgr = findCharacterManager(); } catch (e) { log('CharacterManager search failed: ' + e); }
+      }
+      if (mgr === null) { status('Character manager not found yet; open the hero screen and retry'); return; }
+      let ok = 0;
+      for (let type = 1; type <= 5; type++) {
+        try { unlockCharacter(mgr, type, ptr(0)); ok++; }
+        catch (e) { log('Unlock hero type ' + type + ' failed: ' + e); }
+      }
+      unlockEverySkin(mgr, ptr(0));
+      status('Unlocked ' + ok + ' heroes and all outfits. Restart the game if the hero screen does not refresh.');
     });
   };
   state.stockGadgets = function () {
@@ -141,13 +284,7 @@ function installHooks() {
       drainQueue();
     } });
   });
-  Interceptor.attach(addr('CharacterManager.Init'), {
-    onEnter(args) {
-      state.characterManager = ptr(args[0]);
-      log('CharacterManager captured');
-      drainQueue();
-    }
-  });
+  installEarlyCapture(); // no-op if already installed at library load
   Interceptor.attach(addr('RunnerStateData.Reset'), {
     onEnter(args) { this.data = ptr(args[0]); },
     onLeave() {
@@ -193,10 +330,6 @@ function installHooks() {
       tryDirect(function () { setBanner(state.bannerManager, 0, ptr(0)); });
     }
   };
-  // Periodic fallback: drain any straggling queued work every 500ms.
-  // Primary execution is now direct, but the queue persists as a safety net
-  // for the slider's live multiplier update during a run and similar cases.
-  setInterval(function () { drainQueue(); }, 500);
   state.installed = true;
   state.updateAds();
   log('Native hooks installed for ' + Process.arch);
@@ -505,6 +638,7 @@ function buildMenu() {
 
 function initializeMod() {
     if (!T) { log('Unsupported architecture: ' + Process.arch); return; }
+    watchForIl2cpp();
     // Do not intercept Unity/IL2CPP initialization: early native hooks can
     // execute while the engine is still constructing its managed state.
     // Wait for the menu and then allow the game to finish loading first.
