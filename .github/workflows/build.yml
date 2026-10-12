@@ -9,6 +9,17 @@ on:
       - 'README.md'
       - 'package.json'
   workflow_dispatch:
+    inputs:
+      diagnostics:
+        description: 'Build the five troubleshooting APK variants'
+        required: false
+        type: boolean
+        default: false
+      build_morphe:
+        description: 'Also compile the Morphe .mpp patch bundle'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -71,6 +82,7 @@ jobs:
             --build-tools "$ANDROID_HOME/build-tools/34.0.0" \
             --output build
       - name: Build diagnostic APK splits
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.diagnostics }}
         run: |
           for mode in none gadget java menu hooks; do
             python tools/build.py \
@@ -82,30 +94,35 @@ jobs:
               --output "diagnostic-$mode"
           done
       - uses: actions/upload-artifact@v4
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.diagnostics }}
         with:
           name: herodash-diagnostic-no-injection
           retention-days: 1
           path: diagnostic-none/*-patched.apk
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.diagnostics }}
         with:
           name: herodash-diagnostic-gadget-only
           retention-days: 1
           path: diagnostic-gadget/*-patched.apk
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.diagnostics }}
         with:
           name: herodash-diagnostic-menu-only
           retention-days: 1
           path: diagnostic-menu/*-patched.apk
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.diagnostics }}
         with:
           name: herodash-diagnostic-hooks-only
           retention-days: 1
           path: diagnostic-hooks/*-patched.apk
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.diagnostics }}
         with:
           name: herodash-diagnostic-java-bridge
           retention-days: 1
@@ -123,6 +140,7 @@ jobs:
           path: build/*-patched.apk
           if-no-files-found: error
       - name: Build Morphe patch bundle from public source dependencies
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_morphe }}
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_TOKEN: ${{ github.token }}
@@ -139,11 +157,11 @@ jobs:
           cp morphe/patches/build/libs/patches-1.0.0.mpp build/herodash-local-26.5.1.12192.mpp
           python tools/verify_morphe.py --bundle build/herodash-local-26.5.1.12192.mpp --output build
       - uses: actions/upload-artifact@v4
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_morphe }}
         with:
           name: herodash-26.5.1.12192-local-mod
           retention-days: 1
           path: |
-            build/*-patched.apk
             build/*.mpp
             README.md
           if-no-files-found: error
