@@ -96,7 +96,7 @@ jobs:
           profile: pixel_6
           disable-animations: true
           script: |
-            adb install-multiple -r artifact/build/base-patched.apk artifact/build/split_config.armeabi_v7a-patched.apk
+            adb install-multiple -r artifact/build/base-patched.apk artifact/build/split_config.arm64_v8a-patched.apk
             adb logcat -c
             adb shell monkey -p com.outfit7.herodash 1
             for attempt in $(seq 1 24); do
