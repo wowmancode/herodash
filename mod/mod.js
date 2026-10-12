@@ -55,6 +55,14 @@ function addr(name) {
 }
 function fn(name, ret, args) { return new NativeFunction(addr(name), ret, args); }
 function queue(work) { state.pending.push(work); }
+function drainQueue() {
+  // Drain all pending work; called from multiple IL2CPP hooks to
+  // guarantee execution even when HDAdManager.OnLateUpdate is inactive.
+  while (state.pending.length > 0) {
+    const work = state.pending.shift();
+    try { work(); } catch (e) { status('Action failed: ' + e); }
+  }
+}
 function saveConfig() {
   if (state.prefs === null) return;
   state.prefs.edit().putInt('multiplier', state.multiplier)
@@ -76,11 +84,14 @@ function installHooks() {
   const setBanner = fn('BannerAdManager.set_BannerEnabled', 'void', ['pointer', 'int', 'pointer']);
 
   function setCurrency(id, value) {
+    log('setCurrency(' + id + ', ' + value + ') mgr=' + state.currencyManager);
     if (state.currencyManager === null) { status('Open the game home screen first'); return; }
     const cs = getState(state.currencyManager, ptr(0));
+    log('  currencyState=' + cs);
     if (cs.isNull()) { status('Currency state is not loaded'); return; }
     const str = Memory.allocUtf8String(id);
     const account = getAccount(cs, stringNew(str), ptr(0));
+    log('  account(' + id + ')=' + account);
     if (account.isNull()) { status('Currency account ' + id + ' is unavailable'); return; }
     const balance = account.add(T.fields.currencyBalance);
     const old = balance.readS32();
@@ -90,9 +101,15 @@ function installHooks() {
     status(id + ' set to ' + value);
   }
 
-  state.setCurrency = function (id, value) { queue(function () { setCurrency(id, value); }); };
+  // Execute IL2CPP work directly when called from Android UI thread (which is
+  // Unity's main thread).  Fall back to queue() only if we need to wait for
+  // a manager pointer to be captured by a game hook.
+  function tryDirect(work) {
+    try { work(); } catch (e) { status('Action failed: ' + e); }
+  }
+  state.setCurrency = function (id, value) { tryDirect(function () { setCurrency(id, value); }); };
   state.unlockLocal = function () {
-    queue(function () {
+    tryDirect(function () {
       if (state.characterManager === null) { status('Open the game home screen first'); return; }
       for (let type = 1; type <= 5; type++) unlockCharacter(state.characterManager, type, ptr(0));
       unlockEverySkin(state.characterManager, ptr(0));
@@ -100,7 +117,7 @@ function installHooks() {
     });
   };
   state.stockGadgets = function () {
-    queue(function () {
+    tryDirect(function () {
       ['jet-bike', 'laser-ship', 'supersonic-board', 'headstart-boost'].forEach(function (id) {
         setCurrency(id, 9999);
       });
@@ -108,7 +125,7 @@ function installHooks() {
     });
   };
   state.reviveNow = function () {
-    queue(function () {
+    tryDirect(function () {
       if (!state.infiniteRevives || state.saveMeState === null) {
         status('Revive is available on the crash screen when enabled'); return;
       }
@@ -119,16 +136,24 @@ function installHooks() {
 
   ['HDCurrencyManager.get_HDCurrencyState', 'HDCurrencyManager.get_CoinBalance',
     'HDCurrencyManager.get_GemsBalance', 'HDCurrencyManager.get_TokensBalance'].forEach(function (name) {
-    Interceptor.attach(addr(name), { onEnter(args) { state.currencyManager = ptr(args[0]); } });
+    Interceptor.attach(addr(name), { onEnter(args) {
+      state.currencyManager = ptr(args[0]);
+      drainQueue();
+    } });
   });
   Interceptor.attach(addr('CharacterManager.Init'), {
-    onEnter(args) { state.characterManager = ptr(args[0]); }
+    onEnter(args) {
+      state.characterManager = ptr(args[0]);
+      log('CharacterManager captured');
+      drainQueue();
+    }
   });
   Interceptor.attach(addr('RunnerStateData.Reset'), {
     onEnter(args) { this.data = ptr(args[0]); },
     onLeave() {
       state.runData = this.data;
       this.data.add(T.fields.runnerMultiplier).writeS64(state.multiplier);
+      drainQueue();
     }
   });
   // Do not dereference PrepareDataForRun's return register. Its return type
@@ -136,12 +161,13 @@ function installHooks() {
   // into a bogus object pointer. RunnerStateData.Reset captures the real object.
 
   Interceptor.attach(addr('RunnerManager.EndRun'), {
-    onEnter() { state.runData = null; }
+    onEnter() { state.runData = null; drainQueue(); }
   });
   Interceptor.attach(addr('BannerAdManager.set_BannerEnabled'), {
     onEnter(args) {
       state.bannerManager = ptr(args[0]);
       if (state.noAds) args[1] = ptr(0);
+      drainQueue();
     }
   });
   Interceptor.attach(addr('InterstitialAdManager.get_AdReady'), {
@@ -160,16 +186,17 @@ function installHooks() {
     else trySaveMe(self, clickState, info);
   }, 'void', ['pointer', 'pointer', 'pointer']));
   Interceptor.attach(addr('HDAdManager.OnLateUpdate'), {
-    onEnter() {
-      if (state.pending.length === 0) return;
-      const work = state.pending.splice(0, 1)[0];
-      try { work(); } catch (e) { status('Action failed: ' + e); }
-    }
+    onEnter() { drainQueue(); }
   });
   state.updateAds = function () {
-    if (state.noAds && state.bannerManager !== null)
-      queue(function () { setBanner(state.bannerManager, 0, ptr(0)); });
+    if (state.noAds && state.bannerManager !== null) {
+      tryDirect(function () { setBanner(state.bannerManager, 0, ptr(0)); });
+    }
   };
+  // Periodic fallback: drain any straggling queued work every 500ms.
+  // Primary execution is now direct, but the queue persists as a safety net
+  // for the slider's live multiplier update during a run and similar cases.
+  setInterval(function () { drainQueue(); }, 500);
   state.installed = true;
   state.updateAds();
   log('Native hooks installed for ' + Process.arch);
@@ -409,9 +436,10 @@ function buildMenu() {
               onProgressChanged: function (_v, progress, _user) {
                 state.multiplier = progress + 1; setViewText(label, state.multiplier + '×');
                 saveConfig();
-                if (state.runData !== null) queue(function () {
-                  state.runData.add(T.fields.runnerMultiplier).writeS64(state.multiplier);
-                });
+                if (state.runData !== null) {
+                  try { state.runData.add(T.fields.runnerMultiplier).writeS64(state.multiplier); }
+                  catch (e) { log('Live multiplier update failed: ' + e); }
+                }
               },
               onStartTrackingTouch: function () {}, onStopTrackingTouch: function () {}
             }
