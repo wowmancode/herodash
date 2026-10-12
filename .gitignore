@@ -4,6 +4,8 @@ build/
 input/
 tools-cache/
 *.keystore
+node_modules/
+package-lock.json
 morphe/.gradle/
 morphe/patches/src/main/resources/herodash/*/
 morphe/upstream/
