@@ -254,7 +254,10 @@ function buildMenu() {
     state.infiniteRevives = state.prefs.getBoolean('infiniteRevives', false);
     runUi(function () {
       const Linear = Java.use('android.widget.LinearLayout');
-      const Frame = Java.use('android.widget.FrameLayout');
+      // Frida's Java bridge does not expose nested classes as properties
+      // (Linear.LayoutParams is undefined), so load them by binary name.
+      const LinearParams = Java.use('android.widget.LinearLayout$LayoutParams');
+      const FrameParams = Java.use('android.widget.FrameLayout$LayoutParams');
       const Scroll = Java.use('android.widget.ScrollView');
       const Gravity = Java.use('android.view.Gravity');
       const View = Java.use('android.view.View');
@@ -279,7 +282,7 @@ function buildMenu() {
       tabs.setOrientation(0);
       tabScroll.addView(tabs);
       const scroll = Scroll.$new(activity);
-      body.addView(scroll, Linear.LayoutParams.$new(-1, dp(340)));
+      body.addView(scroll, LinearParams.$new(-1, dp(340)));
       const content = Linear.$new(activity);
       content.setOrientation(1);
       scroll.addView(content);
@@ -291,7 +294,7 @@ function buildMenu() {
       // floating button with Activity.addContentView(), not in the Unity
       // content hierarchy. The actual controls stay hidden until tapped.
       const screen = activity.getResources().getDisplayMetrics();
-      const panelLp = Frame.LayoutParams.$new(
+      const panelLp = FrameParams.$new(
         Math.min(dp(320), screen.widthPixels.value - dp(16)), -2);
       panelLp.gravity.value = Gravity.TOP.value | Gravity.LEFT.value;
       activity.addContentView(root, panelLp);
@@ -310,7 +313,7 @@ function buildMenu() {
       bubble.setBackground(background);
       bubble.setElevation(dp(16));
       bubble.setAlpha(0.93);
-      const bubbleLp = Frame.LayoutParams.$new(dp(48), dp(48));
+      const bubbleLp = FrameParams.$new(dp(48), dp(48));
       bubbleLp.gravity.value = Gravity.TOP.value | Gravity.LEFT.value;
       activity.addContentView(bubble, bubbleLp);
       const prefsX = state.prefs.getInt('bubbleX', dp(8));
