@@ -13,7 +13,15 @@ const state = {
   runData: null, saveMeState: null, pending: [], prefs: null,
   status: null, activity: null, installed: false, uiCount: 0,
   menuAttached: false, menuBuilding: false, menuBuildStartedAt: 0,
-  menuRoot: null, menuHost: null
+  menuRoot: null, menuHost: null,
+  // Android UI can initialize before the IL2CPP hooks become safe to install.
+  // Keep the menu operational rather than throwing when these callbacks are
+  // referenced during its first render.
+  updateAds: function () {},
+  setCurrency: function () { status('Game hooks are not ready yet'); },
+  unlockLocal: function () { status('Game hooks are not ready yet'); },
+  stockGadgets: function () { status('Game hooks are not ready yet'); },
+  reviveNow: function () { status('Game hooks are not ready yet'); }
 };
 
 // Report logs without touching ART/Java; native logging works before the VM is ready.
@@ -163,6 +171,7 @@ function installHooks() {
       queue(function () { setBanner(state.bannerManager, 0, ptr(0)); });
   };
   state.installed = true;
+  state.updateAds();
   log('Native hooks installed for ' + Process.arch);
 }
 
