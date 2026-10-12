@@ -1,0 +1,64 @@
+{
+  "arm": {
+    "fields": {
+      "currencyBalance": 12,
+      "runnerMultiplier": 176
+    },
+    "il2cppSha256": "d0d73420edf179163d8debff7a72bb699a6023ed2c12638db0280cda73158f0f",
+    "mainSha256": "ab65bef5c126f6e03face43d2785f6a324959c88a6f21df155d19c848ed8ed31",
+    "metadataSha256": "d93b53c65cc33ef8e429aba06b8d341e66b28ecb568e9f95645c5b35e401e879",
+    "methods": {
+      "BannerAdManager.set_BannerEnabled": 18740460,
+      "CharacterManager.FullyUnlockCharacterAndSkins": 21439928,
+      "CharacterManager.Init": 21389700,
+      "CharacterManager.UnlockEverySkin": 21441448,
+      "CurrencyManager.CheckAndFireBalanceChangeEvent": 18096492,
+      "CurrencyManager.WriteChanges": 18094032,
+      "HDAdManager.OnLateUpdate": 21454876,
+      "HDCurrencyManager.get_CoinBalance": 21456176,
+      "HDCurrencyManager.get_GemsBalance": 21456280,
+      "HDCurrencyManager.get_HDCurrencyState": 21456028,
+      "HDCurrencyManager.get_TokensBalance": 21456488,
+      "HDCurrencyState.GetHDAccount": 21457724,
+      "InterstitialAdManager.get_AdReady": 18746872,
+      "RunnerManager.EndRun": 20553372,
+      "RunnerManager.PrepareDataForRun": 20560572,
+      "RunnerStateData.Reset": 20659660,
+      "SaveMeState.OnEnter": 19072108,
+      "SaveMeState.OnExit": 19074624,
+      "SaveMeState.OnSaveMeHandled": 19077948,
+      "SaveMeState.TryToPurchaseSaveMe": 19078664
+    }
+  },
+  "arm64": {
+    "fields": {
+      "currencyBalance": 24,
+      "runnerMultiplier": 304
+    },
+    "il2cppSha256": "1e29b62913b34ed8df06ec6d19f6b89c70c97c61374061176200123f4607afb7",
+    "mainSha256": "e6ee684092c38dd1f604c572506ada33238dd94fb0ac0220b06d4d82ead2cf31",
+    "metadataSha256": "d93b53c65cc33ef8e429aba06b8d341e66b28ecb568e9f95645c5b35e401e879",
+    "methods": {
+      "BannerAdManager.set_BannerEnabled": 24260468,
+      "CharacterManager.FullyUnlockCharacterAndSkins": 26362884,
+      "CharacterManager.Init": 26322852,
+      "CharacterManager.UnlockEverySkin": 26363980,
+      "CurrencyManager.CheckAndFireBalanceChangeEvent": 23733856,
+      "CurrencyManager.WriteChanges": 23731608,
+      "HDAdManager.OnLateUpdate": 26374756,
+      "HDCurrencyManager.get_CoinBalance": 26375768,
+      "HDCurrencyManager.get_GemsBalance": 26375852,
+      "HDCurrencyManager.get_HDCurrencyState": 26375648,
+      "HDCurrencyManager.get_TokensBalance": 26376020,
+      "HDCurrencyState.GetHDAccount": 26376944,
+      "InterstitialAdManager.get_AdReady": 24265988,
+      "RunnerManager.EndRun": 25675960,
+      "RunnerManager.PrepareDataForRun": 25681356,
+      "RunnerStateData.Reset": 25757392,
+      "SaveMeState.OnEnter": 24517424,
+      "SaveMeState.OnExit": 24519288,
+      "SaveMeState.OnSaveMeHandled": 24521900,
+      "SaveMeState.TryToPurchaseSaveMe": 24522468
+    }
+  }
+}

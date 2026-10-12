@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+build/
+input/
+tools-cache/
+*.keystore
