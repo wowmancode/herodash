@@ -242,6 +242,29 @@ function javaText(value) {
 function setViewText(view, value) {
   view.setText.overload('java.lang.CharSequence').call(view, javaText(value));
 }
+// Read a TextView/EditText as a plain JS string. getText() returns an
+// Editable wrapper whose toString() may not yield a JS string through
+// Frida's bridge, so go through String.valueOf(Object) explicitly.
+function readViewText(view) {
+  const raw = view.getText();
+  let s = null;
+  try { s = Java.use('java.lang.String').valueOf.overload('java.lang.Object').call(null, raw); } catch (e) {}
+  if (typeof s !== 'string') {
+    try { s = Java.cast(raw, Java.use('java.lang.Object')).toString(); } catch (e) {}
+  }
+  if (typeof s !== 'string') s = String(s);
+  return s;
+}
+// Accept "999", " 1,000 ", and non-ASCII digits some keyboards produce.
+function parseWholeNumber(text) {
+  const cleaned = String(text)
+    .replace(/[٠-٩]/g, function (d) { return String(d.charCodeAt(0) - 0x0660); })
+    .replace(/[۰-۹]/g, function (d) { return String(d.charCodeAt(0) - 0x06F0); })
+    .replace(/[０-９]/g, function (d) { return String(d.charCodeAt(0) - 0xFF10); })
+    .replace(/[\s,._'  ]/g, '');
+  if (!/^\d+$/.test(cleaned)) return NaN;
+  return parseInt(cleaned, 10);
+}
 function setViewHint(view, value) {
   view.setHint.overload('java.lang.CharSequence').call(view, javaText(value));
 }
@@ -415,9 +438,11 @@ function buildMenu() {
         edit.setInputType(2); edit.setSingleLine(true); edit.setTextColor(-16777216);
         setViewHint(edit, '0 to 2,000,000,000'); content.addView(edit);
         content.addView(makeButton('Set ' + label, function () {
-          const value = Number(String(edit.getText().toString()));
+          const text = readViewText(edit);
+          const value = parseWholeNumber(text);
+          log('Currency input for ' + id + ': raw="' + text + '" parsed=' + value);
           if (!Number.isInteger(value) || value < 0 || value > 2000000000) {
-            status('Enter a whole number from 0 to 2,000,000,000'); return;
+            status('Enter a whole number from 0 to 2,000,000,000 (got "' + text + '")'); return;
           }
           state.setCurrency(id, value);
         }));
