@@ -80,7 +80,7 @@ def main():
     p.add_argument("--gadget-arm", required=True, type=Path)
     p.add_argument("--build-tools", required=True, type=Path)
     p.add_argument("--output", required=True, type=Path)
-    p.add_argument("--diagnostic", choices=["none", "gadget"], default=None)
+    p.add_argument("--diagnostic", choices=["none", "gadget", "menu", "hooks"], default=None)
     p.add_argument("--keystore", type=Path)
     p.add_argument("--password", default="android")
     a = p.parse_args()
@@ -93,6 +93,40 @@ def main():
     script = template.replace("__TARGETS__", json.dumps(targets, separators=(",", ":")))
     if a.diagnostic == "gadget":
         script = "console.log('[HeroDashDiagnostic] Gadget loaded; no hooks or menu');\n"
+    if a.diagnostic == "menu":
+        # Entire original UI code, but never install native hooks.
+        script = script.replace(
+            "setImmediate(initializeMod);",
+            """setImmediate(function () {
+  const timer = setInterval(function () {
+    try {
+      if (!Java.available) return;
+      Java.perform(function () {
+        const Unity = Java.use('com.unity3d.player.UnityPlayer');
+        if (Unity.currentActivity.value === null) return;
+        clearInterval(timer);
+        state.setCurrency = function () { status('Diagnostic: hooks disabled'); };
+        state.unlockLocal = state.stockGadgets = state.reviveNow =
+          function () { status('Diagnostic: hooks disabled'); };
+        state.updateAds = function () {};
+        buildMenu();
+      });
+    } catch (e) { log('Diagnostic menu failed: ' + e.stack); }
+  }, 500);
+});""")
+    elif a.diagnostic == "hooks":
+        # Install native hooks without creating any Android menu.
+        script = script.replace(
+            "setImmediate(initializeMod);",
+            """setImmediate(function () {
+  setTimeout(function () {
+    const poll = setInterval(function () {
+      if (Module.findBaseAddress('libil2cpp.so') === null) return;
+      clearInterval(poll);
+      try { installHooks(); } catch (e) { log('Diagnostic hooks failed: ' + e.stack); }
+    }, 1000);
+  }, 20000);
+});""")
     with zipfile.ZipFile(a.apkm) as bundle, tempfile.TemporaryDirectory() as temp_name:
         temp = Path(temp_name)
         info = json.loads(bundle.read("info.json"))
