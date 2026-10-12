@@ -4,3 +4,6 @@ build/
 input/
 tools-cache/
 *.keystore
+morphe/.gradle/
+morphe/patches/src/main/resources/herodash/*/
+morphe/upstream/

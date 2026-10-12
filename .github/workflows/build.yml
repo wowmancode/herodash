@@ -15,7 +15,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -54,7 +54,7 @@ jobs:
           xz -d tools-cache/arm.so.xz
       - name: Check source syntax
         run: |
-          python -m py_compile tools/build.py tools/extract_targets.py tools/verify.py
+          python -m py_compile tools/build.py tools/extract_targets.py tools/verify.py tools/stage_morphe.py tools/verify_morphe.py
           node --check mod/mod.js
       - name: Build signed APK splits
         run: |
@@ -68,11 +68,28 @@ jobs:
         run: |
           python tools/verify.py --original input/herodash.apkm --output build \
             --build-tools "$ANDROID_HOME/build-tools/34.0.0"
+      - name: Build Morphe patch bundle from public source dependencies
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p morphe/upstream
+          git clone --depth 1 --branch v1.3.4 \
+            https://github.com/MorpheApp/morphe-patches-gradle-plugin.git \
+            morphe/upstream/morphe-patches-gradle-plugin
+          git clone --depth 1 --branch v1.15.1 \
+            https://github.com/MorpheApp/morphe-patcher.git \
+            morphe/upstream/morphe-patcher
+          python tools/stage_morphe.py --output build
+          (cd morphe && ./gradlew buildAndroid --console=plain --no-daemon)
+          cp morphe/patches/build/libs/patches-1.0.0.mpp build/herodash-local-26.5.1.12192.mpp
+          python tools/verify_morphe.py --bundle build/herodash-local-26.5.1.12192.mpp --output build
       - uses: actions/upload-artifact@v4
         with:
           name: herodash-26.5.1.12192-local-mod
           path: |
             build/*-patched.apk
+            build/*.mpp
             README.md
           if-no-files-found: error
 

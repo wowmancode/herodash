@@ -2,7 +2,8 @@
 
 This repository builds a non-root, locally signed set of APK splits from the exact
 APKM attached to the `hero` release. The build checks its SHA-256 before editing.
-It contains no automation or TAS code.
+It contains no automation or TAS code. The same version-pinned native payload is
+also built as a Morphe `.mpp` patch bundle.
 
 ## Current scope
 
@@ -46,7 +47,7 @@ it needs neither root nor the Android draw-over-other-apps permission.
 Pushes to `main` run [the build workflow](.github/workflows/build.yml). It
 downloads release asset `634215535` using the workflow's repository token,
 checks the pinned APKM digest, downloads both Frida Gadget ABIs, builds and
-signs the splits, and validates the result. The artifact is named
+signs the splits, builds a Morphe `.mpp`, and validates the result. The artifact is named
 `herodash-26.5.1.12192-local-mod`. The workflow uses a fresh debug key each
 run; these artifacts are installable, but updates from different runs require
 uninstalling the previous mod first.
@@ -69,6 +70,24 @@ python tools/verify.py --original path/to/herodash.apkm \
 Pass `--keystore path/to/your.keystore` to reuse a signing key. Otherwise a
 new debug keystore is created in the output directory.
 
+To build the Morphe bundle locally after building and verifying the APK splits,
+clone the public Morphe source dependencies at their pinned tags, then run:
+
+```sh
+mkdir -p morphe/upstream
+git clone --depth 1 --branch v1.3.4 https://github.com/MorpheApp/morphe-patches-gradle-plugin.git morphe/upstream/morphe-patches-gradle-plugin
+git clone --depth 1 --branch v1.15.1 https://github.com/MorpheApp/morphe-patcher.git morphe/upstream/morphe-patcher
+python tools/stage_morphe.py --output build
+(cd morphe && ./gradlew buildAndroid)
+python tools/verify_morphe.py --bundle morphe/patches/build/libs/patches-1.0.0.mpp --output build
+```
+
+The `.mpp` patch is declared only for package `com.outfit7.herodash` version
+`26.5.1.12192`. Morphe Manager merges the APKM splits before applying its raw
+resource patch; the patch checks the original `libmain.so` hashes before
+replacing the native payload. A `.mpp` is a patch bundle for Morphe, not an
+installable Android application.
+
 ## Install
 
 The mod signature differs from Outfit7's signature. Back up any local data
@@ -86,11 +105,16 @@ handle to move it. The Controls do not modify IAP receipt validation or
 leaderboard code. “Reset mod settings” resets the multiplier and toggles; it
 does not reverse balances or game progress already written to the local save.
 
+For the `.mpp`, select this patch bundle in Morphe and provide the exact
+`26.5.1.12192` APKM as input. Install Morphe's signed output according to its
+instructions after removing the original app with the conflicting signature.
+
 ## Verification boundaries
 
 The workflow checks source hashes, valid IL2CPP method addresses, the Gadget
 dependency and script in each split, package/version, alignment, and shared
-APK signing certificate. It does **not** prove in-game behavior on a device.
+APK signing certificate. It also checks that the `.mpp` contains the same
+payload and compiled patch code. It does **not** prove in-game behavior on a device.
 An ARM Android device smoke test is still needed before calling individual
 controls verified. Do not describe this experimental artifact as a fully tested
 mod until that test has passed.
