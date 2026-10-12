@@ -26,6 +26,14 @@ def main():
     p.add_argument("--build-tools", required=True, type=Path)
     a = p.parse_args()
     targets = json.loads((ROOT / "mod/targets.json").read_text())
+    # Catch the precise error observed on Android 17: Frida cannot resolve
+    # TextView.setText(int) versus TextView.setText(CharSequence) for JS strings.
+    menu_source = (ROOT / "mod/mod.js").read_text(encoding="utf-8")
+    assert "function setViewText(view, value)" in menu_source
+    assert "setText.overload('java.lang.CharSequence')" in menu_source
+    assert not re.search(r"\\.(?:setText|setHint)\\s*\\(", menu_source), (
+        "Ambiguous Android text overload: route through setViewText/setViewHint"
+    )
     certs = []
     with zipfile.ZipFile(a.original) as original:
         for arch, split in (("arm64", "split_config.arm64_v8a"), ("arm", "split_config.armeabi_v7a")):
