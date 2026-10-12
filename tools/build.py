@@ -92,7 +92,7 @@ def main():
         raise ValueError("mod.js must contain one target placeholder")
     script = template.replace("__TARGETS__", json.dumps(targets, separators=(",", ":")))
     if a.diagnostic == "gadget":
-        script = "console.log('[HeroDashDiagnostic] Frida 17 gadget loaded');\\n"
+        script = "console.log('[HeroDashDiagnostic] Frida 17 gadget loaded');\n"
     elif a.diagnostic == "java":
         script = """import Java from 'frida-java-bridge';
 const androidLog = new NativeFunction(
