@@ -218,7 +218,8 @@ function buildMenu() {
         return;
       }
       // Retain across the async main-thread callback.
-      state.activity = Java.retain(activity);
+      activity = Java.retain(activity);
+      state.activity = activity;
     } catch (e) {
       state.menuBuilding = false;
       log('Menu activity lookup failed: ' + (e.stack || e));
