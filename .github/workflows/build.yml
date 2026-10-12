@@ -95,16 +95,4 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          script: |
-            adb install-multiple -r artifact/build/base-patched.apk artifact/build/split_config.arm64_v8a-patched.apk
-            adb logcat -c
-            adb shell monkey -p com.outfit7.herodash 1
-            for attempt in $(seq 1 24); do
-              sleep 5
-              if adb logcat -d -s HeroDashMod:I '*:S' | grep -q 'Floating menu attached'; then
-                adb logcat -d -s HeroDashMod:I '*:S'
-                exit 0
-              fi
-            done
-            adb logcat -d -s HeroDashMod:I AndroidRuntime:E '*:S'
-            exit 1
+          script: bash tools/emulator_smoke.sh
