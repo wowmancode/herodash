@@ -80,6 +80,7 @@ def main():
     p.add_argument("--gadget-arm", required=True, type=Path)
     p.add_argument("--build-tools", required=True, type=Path)
     p.add_argument("--output", required=True, type=Path)
+    p.add_argument("--diagnostic", choices=["none", "gadget"], default=None)
     p.add_argument("--keystore", type=Path)
     p.add_argument("--password", default="android")
     a = p.parse_args()
@@ -90,6 +91,8 @@ def main():
     if template.count("__TARGETS__") != 1:
         raise ValueError("mod.js must contain one target placeholder")
     script = template.replace("__TARGETS__", json.dumps(targets, separators=(",", ":")))
+    if a.diagnostic == "gadget":
+        script = "console.log('[HeroDashDiagnostic] Gadget loaded; no hooks or menu');\n"
     with zipfile.ZipFile(a.apkm) as bundle, tempfile.TemporaryDirectory() as temp_name:
         temp = Path(temp_name)
         info = json.loads(bundle.read("info.json"))
@@ -100,10 +103,16 @@ def main():
         with zipfile.ZipFile(base) as apk:
             exact(apk.read("assets/bin/Data/Managed/Metadata/global-metadata.dat"),
                   targets["arm64"]["metadataSha256"], "IL2CPP metadata")
-        split64 = patch_split(bundle.read("split_config.arm64_v8a.apk"), "arm64", a.gadget_arm64,
-                              script, targets["arm64"], temp)
-        split32 = patch_split(bundle.read("split_config.armeabi_v7a.apk"), "arm", a.gadget_arm,
-                              script, targets["arm"], temp)
+        if a.diagnostic == "none":
+            split64 = temp / "split-arm64-unsigned.apk"
+            split32 = temp / "split-arm-unsigned.apk"
+            split64.write_bytes(bundle.read("split_config.arm64_v8a.apk"))
+            split32.write_bytes(bundle.read("split_config.armeabi_v7a.apk"))
+        else:
+            split64 = patch_split(bundle.read("split_config.arm64_v8a.apk"), "arm64", a.gadget_arm64,
+                                  script, targets["arm64"], temp)
+            split32 = patch_split(bundle.read("split_config.armeabi_v7a.apk"), "arm", a.gadget_arm,
+                                  script, targets["arm"], temp)
         keystore = a.keystore or (a.output / "herodashmod-debug.keystore")
         if not keystore.exists():
             run("keytool", "-genkeypair", "-keystore", keystore, "-alias", "herodashmod",
