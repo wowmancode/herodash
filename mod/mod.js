@@ -24,7 +24,8 @@ function status(s) {
   log(s);
   if (state.status !== null) runUi(function () { state.status.setText(String(s)); });
 }
-function addr(name) { return Module.findBaseAddress('libil2cpp.so').add(T.methods[name]); }
+function il2cpp() { return Process.findModuleByName('libil2cpp.so'); }
+function addr(name) { return il2cpp().base.add(T.methods[name]); }
 function fn(name, ret, args) { return new NativeFunction(addr(name), ret, args); }
 function queue(work) { state.pending.push(work); }
 function saveConfig() {
@@ -35,13 +36,13 @@ function saveConfig() {
 }
 
 function installHooks() {
-  if (state.installed || !T || Module.findBaseAddress('libil2cpp.so') === null) return;
+  if (state.installed || !T || il2cpp() === null) return;
   state.installed = true;
   const getState = fn('HDCurrencyManager.get_HDCurrencyState', 'pointer', ['pointer', 'pointer']);
   const getAccount = fn('HDCurrencyState.GetHDAccount', 'pointer', ['pointer', 'pointer', 'pointer']);
   const writeChanges = fn('CurrencyManager.WriteChanges', 'int', ['pointer', 'int', 'pointer']);
   const balanceEvent = fn('CurrencyManager.CheckAndFireBalanceChangeEvent', 'void', ['pointer', 'pointer', 'int', 'pointer']);
-  const stringNew = new NativeFunction(Module.findExportByName('libil2cpp.so', 'il2cpp_string_new'), 'pointer', ['pointer']);
+  const stringNew = new NativeFunction(il2cpp().getExportByName('il2cpp_string_new'), 'pointer', ['pointer']);
   const unlockEverySkin = fn('CharacterManager.UnlockEverySkin', 'void', ['pointer', 'pointer']);
   const unlockCharacter = fn('CharacterManager.FullyUnlockCharacterAndSkins', 'void', ['pointer', 'int', 'pointer']);
   const saveMeHandled = fn('SaveMeState.OnSaveMeHandled', 'void', ['pointer', 'int', 'int', 'int', 'pointer']);
@@ -308,7 +309,7 @@ rpc.exports = {
   init: function () {
     if (!T) { log('Unsupported architecture: ' + Process.arch); return; }
     const timer = setInterval(function () {
-      if (Module.findBaseAddress('libil2cpp.so') === null) return;
+      if (il2cpp() === null) return;
       clearInterval(timer);
       try { installHooks(); } catch (e) { log('Hook setup failed: ' + e.stack); }
     }, 250);

@@ -37,7 +37,7 @@ This build is Unity IL2CPP (metadata version 31). `global-metadata.dat` is in
 contains platform and SDK code. Morphe supports bytecode, decoded resource, and
 raw resource patches; its raw resource API can replace native libraries, while
 its bytecode patcher does not transform compiled IL2CPP methods. This project
-adds a dependency to `libmain.so` and packages Frida Gadget 16.7.19 plus a
+adds a dependency to `libmain.so` and packages Frida Gadget 17.23.3 plus a
 version-pinned script inside each ABI split. The source library and metadata
 hashes are checked before building. The script runs inside the game process;
 it needs neither root nor the Android draw-over-other-apps permission.
@@ -52,8 +52,9 @@ signs the splits, builds a Morphe `.mpp`, and validates the result. The artifact
 run; these artifacts are installable, but updates from different runs require
 uninstalling the previous mod first.
 
-To build locally, install Python 3.12, Java 17, Android build-tools 34.0.0,
-and `lief==0.17.0`. Download Frida Gadget 16.7.19 for Android arm64 and arm,
+To build locally, install Python 3.12, Java 17, Node.js, Android build-tools
+34.0.0, and `lief==0.17.0`. Run `npm ci --prefix mod` to install the pinned
+Java bridge bundler. Download Frida Gadget 17.23.3 for Android arm64 and arm,
 decompress both `.so.xz` files, then run:
 
 ```sh
@@ -115,6 +116,8 @@ The workflow checks source hashes, valid IL2CPP method addresses, the Gadget
 dependency and script in each split, package/version, alignment, and shared
 APK signing certificate. It also checks that the `.mpp` contains the same
 payload and compiled patch code. It does **not** prove in-game behavior on a device.
-An ARM Android device smoke test is still needed before calling individual
-controls verified. Do not describe this experimental artifact as a fully tested
-mod until that test has passed.
+The Android 15 x86_64 GitHub emulator translates ARM64 native code and aborts
+inside Frida Gadget's native constructor before the mod script starts. This
+does not establish whether the same APK works on a native ARM phone. An ARM
+Android device smoke test is still needed before calling individual controls
+verified. The release is marked as a prerelease for this reason.
