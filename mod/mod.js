@@ -220,13 +220,14 @@ function setViewHint(view, value) {
 }
 function makeText(label, size) {
   const v = Java.use('android.widget.TextView').$new(state.activity);
-  setViewText(v, label); v.setTextColor(-1); v.setTextSize(size || 14);
+  setViewText(v, label); v.setTextColor(-16777216); v.setTextSize(size || 14);
   v.setPadding(dp(8), dp(6), dp(8), dp(6));
   return v;
 }
 function makeButton(label, callback) {
   const v = Java.use('android.widget.Button').$new(state.activity);
-  setViewText(v, label); v.setAllCaps(false); addClick(v, callback); return v;
+  setViewText(v, label); v.setAllCaps(false); v.setTextColor(-16777216);
+  addClick(v, callback); return v;
 }
 function buildMenu() {
   Java.perform(function () {
@@ -267,7 +268,7 @@ function buildMenu() {
       const root = Linear.$new(activity);
       root.setOrientation(1);
       root.setPadding(dp(8), dp(8), dp(8), dp(8));
-      root.setBackgroundColor(Color.rgb(32, 35, 43));
+      root.setBackgroundColor(Color.rgb(242, 242, 245));
       root.setElevation(dp(12));
       const header = makeButton('Hero Dash menu  ✕', function () {
         root.setVisibility(View.GONE.value);
@@ -371,7 +372,7 @@ function buildMenu() {
       function clear() { content.removeAllViews(); }
       function toggle(label, key, after) {
         const sw = Java.use('android.widget.Switch').$new(activity);
-        setViewText(sw, label); sw.setTextColor(-1); sw.setChecked(!!state[key]);
+        setViewText(sw, label); sw.setTextColor(-16777216); sw.setChecked(!!state[key]);
         const Listener = Java.registerClass({
           name: 'com.outfit7.herodash.mod.S' + (++state.uiCount),
           implements: [Java.use('android.widget.CompoundButton$OnCheckedChangeListener')],
@@ -384,7 +385,7 @@ function buildMenu() {
       function currencyInput(label, id) {
         content.addView(makeText(label));
         const edit = Java.use('android.widget.EditText').$new(activity);
-        edit.setInputType(2); edit.setSingleLine(true); edit.setTextColor(-1);
+        edit.setInputType(2); edit.setSingleLine(true); edit.setTextColor(-16777216);
         setViewHint(edit, '0 to 2,000,000,000'); content.addView(edit);
         content.addView(makeButton('Set ' + label, function () {
           const value = Number(String(edit.getText().toString()));
