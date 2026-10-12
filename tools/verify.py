@@ -29,6 +29,12 @@ def main():
     # Catch the precise error observed on Android 17: Frida cannot resolve
     # TextView.setText(int) versus TextView.setText(CharSequence) for JS strings.
     menu_source = (ROOT / "mod/mod.js").read_text(encoding="utf-8")
+    assert "activity.addContentView(bubble, bubbleLp)" in menu_source, (
+        "Gold Run style floating button must be attached to the Activity"
+    )
+    assert "root.setVisibility(View.GONE.value)" in menu_source, (
+        "Mod panel must start hidden until the button is tapped"
+    )
     assert "function setViewText(view, value)" in menu_source
     assert "setText.overload('java.lang.CharSequence')" in menu_source
     assert not re.search(r"\.(?:setText|setHint)\s*\(", menu_source), (
