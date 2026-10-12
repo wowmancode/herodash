@@ -45,10 +45,10 @@ jobs:
             'https://api.github.com/repos/${{ github.repository }}/releases/assets/634215535' \
             -o input/herodash.apkm
           curl --fail --location --retry 3 \
-            'https://github.com/frida/frida/releases/download/16.7.19/frida-gadget-16.7.19-android-arm64.so.xz' \
+            'https://github.com/frida/frida/releases/download/17.23.3/frida-gadget-17.23.3-android-arm64.so.xz' \
             -o tools-cache/arm64.so.xz
           curl --fail --location --retry 3 \
-            'https://github.com/frida/frida/releases/download/16.7.19/frida-gadget-16.7.19-android-arm.so.xz' \
+            'https://github.com/frida/frida/releases/download/17.23.3/frida-gadget-17.23.3-android-arm.so.xz' \
             -o tools-cache/arm.so.xz
           xz -d tools-cache/arm64.so.xz
           xz -d tools-cache/arm.so.xz
