@@ -75,3 +75,34 @@ jobs:
             build/*-patched.apk
             README.md
           if-no-files-found: error
+
+  emulator-smoke:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: herodash-26.5.1.12192-local-mod
+          path: artifact
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: |
+            adb install-multiple -r artifact/build/base-patched.apk artifact/build/split_config.armeabi_v7a-patched.apk
+            adb logcat -c
+            adb shell monkey -p com.outfit7.herodash 1
+            for attempt in $(seq 1 24); do
+              sleep 5
+              if adb logcat -d -s HeroDashMod:I '*:S' | grep -q 'Floating menu attached'; then
+                adb logcat -d -s HeroDashMod:I '*:S'
+                exit 0
+              fi
+            done
+            adb logcat -d -s HeroDashMod:I AndroidRuntime:E '*:S'
+            exit 1
